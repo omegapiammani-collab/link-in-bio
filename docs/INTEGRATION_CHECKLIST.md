@@ -114,3 +114,13 @@
 - [ ] Real encrypted off-Supabase backup and real recovery into an isolated Supabase-compatible environment remain outstanding. Do not count the fixture rehearsal as production backup evidence.
 - [ ] Real non-Owner Google OAuth sign-in denial still outstanding; only simulated RLS denial has been independently tested.
 - [ ] Re-run full CI on latest branch before merge and leave Draft PR open until the actual backup/recovery sign-off.
+
+## Secrets setup and live-backup preflight — 3 November 2026
+- [x] User confirms adding `BACKUP_DATABASE_URL`, `BACKUP_STORAGE_SERVICE_ROLE_KEY`, and `BACKUP_ENCRYPTION_PASSPHRASE` through GitHub repository Actions Secrets, and saving the recovery passphrase separately in Google Password Manager.
+- [ ] Independent verification of the three **secret names** in GitHub Settings is still pending: secure Browser Use session was signed out on latest attempt. Never ask the user to paste the values.
+- [x] Supabase database PostgreSQL server version 17.11 matches the workflow's PostgreSQL 17 image.
+- [x] Private media bucket contains zero objects, and `backup_manifests` contains zero rows. No real backup may be marked complete from this evidence.
+- [x] Added `umask 077` around Storage download and `if: always()` cleanup of plaintext staging, temporary archive, and local encrypted file in the manual backup workflow.
+- [ ] **GitHub platform blocker:** `workflow_dispatch` requires the workflow file to exist on the repository's default branch. `.github/workflows/backup-manual.yml` only exists on `feature/phase-1-foundation`; therefore the manual workflow must not be represented as runnable yet. Do not merge or push to `main` without explicit user approval.
+- [ ] Verify backup DATABASE URL connectivity, encrypted archive actually uploaded, archive retained outside Supabase, and restore into isolated Supabase-compatible target. No live-run has occurred.
+- [ ] A separate real non-Owner Google login and unauthorized Admin access check are required before closing Phase 1.
