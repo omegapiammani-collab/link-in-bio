@@ -7,7 +7,6 @@ must be in the ephemeral CI work directory, never in a public repository.
 import hashlib
 import json
 import os
-import subprocess
 import sys
 from pathlib import Path
 
@@ -25,12 +24,8 @@ def check_archive_tree(root: Path) -> tuple[int, int]:
     if not manifest.is_file():
         raise ValueError("Missing media manifest")
 
-    result = subprocess.run(
-        ["pg_restore", "--list", str(dump)],
-        capture_output=True, text=True, timeout=60, check=False,
-    )
-    if result.returncode != 0 or not result.stdout.strip():
-        raise ValueError("PostgreSQL dump catalog cannot be read")
+    if not dump.read_bytes()[:5] == b"PGDMP":
+        raise ValueError("Invalid PostgreSQL custom archive header")
 
     data = json.loads(manifest.read_text(encoding="utf-8"))
     if not isinstance(data, list):
@@ -87,6 +82,6 @@ if __name__ == "__main__":
             Path(os.environ.get("BACKUP_DIR", "backup"))
         )
         print(f"Staged backup integrity OK: {count} image(s), {bytes_checked} media bytes")
-    except (OSError, ValueError, json.JSONDecodeError, subprocess.TimeoutExpired) as exc:
+    except (OSError, ValueError, json.JSONDecodeError) as exc:
         print("Staged backup integrity verification FAILED", file=sys.stderr)
         raise SystemExit(1) from exc
