@@ -16,3 +16,57 @@ jobs:
       - run: npm install --no-audit --no-fund
       - run: npm run check
       - run: npm run build
+
+  bootstrap-vinext:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/feature/phase-1-foundation'
+    runs-on: ubuntu-latest
+    timeout-minutes: 18
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: true
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Check whether Cloudflare configuration exists
+        id: detect
+        run: |
+          if [ -f cloudflare.config.ts ] && [ -f vite.config.ts ]; then
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Install dependencies
+        if: steps.detect.outputs.ready == 'false'
+        run: npm install --no-audit --no-fund
+      - name: Check vinext compatibility
+        if: steps.detect.outputs.ready == 'false'
+        run: npx --yes vinext check
+        continue-on-error: true
+      - name: Generate Cloudflare configuration
+        if: steps.detect.outputs.ready == 'false'
+        run: npx --yes vinext init --platform=cloudflare
+        env:
+          CI: 'true'
+      - name: Validate vinext build
+        if: steps.detect.outputs.ready == 'false'
+        run: npm run build:vinext
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: https://mmbhuxiejfqipttyujop.supabase.co
+          NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: sb_publishable_placeholder_only
+          OWNER_AUTH_USER_ID: 00000000-0000-0000-0000-000000000000
+      - name: Commit generated configuration
+        if: steps.detect.outputs.ready == 'false'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -u
+          for f in package-lock.json vite.config.ts cloudflare.config.ts wrangler.jsonc wrangler.json; do
+            if [ -f "$f" ]; then git add "$f"; fi
+          done
+          if ! git diff --cached --quiet; then
+            git commit -m "build: configure vinext for Cloudflare Workers Free"
+            git push origin HEAD:feature/phase-1-foundation
+          fi
