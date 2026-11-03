@@ -148,3 +148,13 @@
 - [x] Private backup vault remains Private; the main public application PR #1 remains Draft/unmerged; no paid-tier upgrade or production restore occurred.
 
 **Decision:** Phase 1 remains **OPEN** until all mandatory acceptance gates have evidence. Never mark complete merely because encrypted backup and public table restore passed.
+
+## Non-Owner Google OAuth acceptance — user observation (3 November 2026)
+
+- [x] **User-observed**: after signing in to Cloudflare Workers Free Preview with a **second Google account** (not the Owner account), access to `/admin` was denied / the UI reported insufficient privileges. This is a real browser acceptance observation reported directly by the user; it is **not** an independently inspected OAuth session or browser trace. Do not treat it as proof that all private Storage APIs were denied.
+- [ ] Save a redacted screenshot/status code (no cookies/tokens/email addresses) or review independent server evidence if needed before declaring the Non-Owner flow independently verified.
+- [ ] Test non-Owner Storage object list, download, upload and private media API permissions in a genuine second-account session; SQL-based policy checks are already complete but do not replace this end-to-end acceptance.
+- [ ] Verify complete isolated Supabase Auth/Storage restore and actual file-byte reinjection in an isolated compatible environment. The isolated public-table restore with synthetic Auth stubs passed, but this is NOT the same as restoring Auth/OAuth or private media.
+- [ ] Download/store an encrypted off-GitHub artifact copy, separate from the passphrase, before 8 December 2026. User has not confirmed this.
+- [ ] Confirm Email Provider persisted disabled independently without enabling any password auth.
+- [x] Phase 1 remains Draft and unmerged; no paid tier or production rollout approved.
