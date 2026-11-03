@@ -27,3 +27,14 @@ This was the only connected Supabase project, it had no public application table
 - Public access to historic `page_versions` and Draft must remain denied.
 - The current `page_versions` INSERT policy is a provisional design and is not yet the production-controlled Publish workflow.
 - No production deployment or public renderer is in place.
+
+## Verification update — 3 November 2026, post-Google OAuth
+- User confirmed Google login opened the actual protected Owner dashboard on Cloudflare Workers.
+- Supabase had one Auth user, one Google identity, one active session, and exactly one configured Owner.
+- Performed a transactional live RLS test: the authenticated Owner could INSERT and SELECT a Draft page; a different authenticated UUID could not SELECT the same page. The transaction was rolled back, with zero test pages remaining.
+- Confirmed RLS enabled on all nine public tables.
+- GitHub Actions Checks run #25 (commit 55c146e) completed successfully; Cloudflare `link-in-bio-preview` deployed from feature branch and remains a PREVIEW, not production.
+- Remaining authentication acceptance tests: sign out in the user's actual browser, verify redirect to Login and that /admin does not remain accessible, then sign in again.
+- Security Advisor currently shows `auth_leaked_password_protection` warning. The intended UX is Google-only; review the Email/Password provider configuration and leaked-password security setting before declaring security QA complete.
+- Performance Advisor identified four foreign keys without supporting indexes. These are performance recommendations rather than failing correctness tests and should be addressed before production readiness.
+- Outstanding production hardening: storage policies, audit/rollback mutation controls, backups and restore drill, rate-limiting, comprehensive integration/browser tests, free quota monitoring.
