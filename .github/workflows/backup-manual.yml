@@ -39,6 +39,10 @@ jobs:
             [[ "$mode" == "preflight" || "$mode" == "secret-check" || "$mode" == "connection-check" || "$mode" == "live" ]] || { echo "Invalid request mode"; exit 1; }
             test "$(grep -c '^mode=' ops/backup-request.txt)" -eq 1
           fi
+          if [[ "$mode" == "live" && "${{ github.event.repository.private }}" != "true" ]]; then
+            echo "::error::Live backup blocked: this repository is public and GitHub Actions artifacts may be readable by public repository readers. Use an approved private backup destination first."
+            exit 1
+          fi
           if [[ "$mode" == "preflight" ]]; then
             command -v gpg >/dev/null
             command -v docker >/dev/null
@@ -135,7 +139,7 @@ jobs:
 
   backup:
     needs: preflight
-    if: needs.preflight.outputs.mode == 'live'
+    if: needs.preflight.outputs.mode == 'live' && github.event.repository.private == true
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
