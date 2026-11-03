@@ -1,0 +1,2 @@
+mode=preflight
+request_id=2026-11-03-feature-branch-dry-run-01
