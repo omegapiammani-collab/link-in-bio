@@ -5,8 +5,6 @@ import json
 from pathlib import Path
 import tempfile
 import unittest
-from unittest.mock import patch
-from subprocess import CompletedProcess
 
 MODULE_PATH = Path(__file__).parents[1] / "scripts" / "verify_backup.py"
 spec = importlib.util.spec_from_file_location("verify_backup", MODULE_PATH)
@@ -32,23 +30,20 @@ class VerifyBackupTests(unittest.TestCase):
     def test_complete_archive(self):
         with tempfile.TemporaryDirectory() as d:
             root = self.setup_data(d)
-            with patch.object(mod.subprocess, "run", return_value=CompletedProcess([],0,"fake pg_restore listing","")):
-                self.assertEqual(mod.check_archive_tree(root), (1, 10))
+            self.assertEqual(mod.check_archive_tree(root), (1, 10))
 
     def test_tampered_file_rejected(self):
         with tempfile.TemporaryDirectory() as d:
             root = self.setup_data(d)
             (root / "media/folder/image.png").write_bytes(b"wrong file")
-            with patch.object(mod.subprocess, "run", return_value=CompletedProcess([],0,"fake pg_restore listing","")):
-                with self.assertRaisesRegex(ValueError, "Media byte count mismatch"):
+            with self.assertRaisesRegex(ValueError, "Media byte count mismatch"):
                     mod.check_archive_tree(root)
 
     def test_undeclared_file_rejected(self):
         with tempfile.TemporaryDirectory() as d:
             root = self.setup_data(d)
             (root / "media/extra.png").write_bytes(b"hidden")
-            with patch.object(mod.subprocess, "run", return_value=CompletedProcess([],0,"fake pg_restore listing","")):
-                with self.assertRaisesRegex(ValueError, "does not describe all"):
+            with self.assertRaisesRegex(ValueError, "does not describe all"):
                     mod.check_archive_tree(root)
 
     def test_duplicate_manifest_path_rejected(self):
@@ -57,8 +52,7 @@ class VerifyBackupTests(unittest.TestCase):
             manifest_path = root / "media-manifest.json"
             entries = json.loads(manifest_path.read_text())
             manifest_path.write_text(json.dumps(entries + entries))
-            with patch.object(mod.subprocess, "run", return_value=CompletedProcess([],0,"fake pg_restore listing","")):
-                with self.assertRaisesRegex(ValueError, "duplicate"):
+            with self.assertRaisesRegex(ValueError, "duplicate"):
                     mod.check_archive_tree(root)
 
 if __name__ == "__main__":
