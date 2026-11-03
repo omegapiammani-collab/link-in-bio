@@ -82,3 +82,13 @@ The trigger-file workflow was added and executed entirely on the feature branch;
 3. Review the elevated service-role key scope, GitHub artifact ACL/retention and the policy for recovering the encryption passphrase.
 4. Only after those checks, request one `mode=live` run with a fresh request ID, verify an encrypted artifact exists, and rehearse decryption/restore **off the live Supabase project**.
 5. Confirm real non-Owner Google login denial independently. None of the steps above requires merging the Draft PR or enabling paid tiers.
+
+## GitHub Secrets and Supabase read-only connection acceptance — 3 November 2026
+- [x] GitHub Actions run **#41645648760**: `secret-readiness` succeeded; all three required secret values were present and the recovery passphrase length requirement passed. Values were not displayed or copied into repository code.
+- [x] GitHub Actions run **#41645894735**: `connection-readiness` succeeded; a PostgreSQL 17 **schema-only** export of `public` completed and the Supabase private Storage bucket list API returned valid JSON. No database data was dumped, no Storage bytes downloaded, and the `backup` job was skipped.
+- [x] Repository visibility was verified as **public**. GitHub Actions artifacts in a public repository are accessible to readers of that repository. The previous workflow would have created an encrypted database archive in that publicly readable artifact store.
+- [x] Added fail-closed security gate: `mode=live` is denied while the repository is public, both in preflight and in the backup job condition. No actual database backup was initiated.
+- [ ] Before a real encrypted backup, establish a **private** destination with adequate retention, recovery-key custody and available free quota. A separate private GitHub backup repository is a possible free-tier option, but requires a secure authorization/credential strategy and tested cross-repository artifact upload. Do not make the existing public source repository private or merge to main without user authorization.
+- [ ] Recover the real archive into a separate Supabase-compatible environment; only then record a verified manifest. Real non-Owner Google login remains a distinct Phase 1 acceptance test.
+
+Source: GitHub REST API artifacts documentation https://docs.github.com/en/rest/actions/artifacts
