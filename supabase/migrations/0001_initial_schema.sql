@@ -14,7 +14,7 @@ revoke all on schema app_private from public;
 grant usage on schema app_private to authenticated;
 create or replace function app_private.is_owner() returns boolean
 language sql stable security definer set search_path = ''
-as $ select exists(select 1 from public.owner_config where auth_user_id=(select auth.uid())); $;
+as $owner$ select exists(select 1 from public.owner_config where auth_user_id=(select auth.uid())); $owner$;
 revoke all on function app_private.is_owner() from public, anon, authenticated;
 grant execute on function app_private.is_owner() to authenticated;
 
