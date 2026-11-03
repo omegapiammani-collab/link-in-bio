@@ -134,3 +134,17 @@
 - [ ] **Do not mark completed:** real Google login from a separate non-Owner account.
 - [ ] Independently retain an encrypted off-GitHub copy before GitHub Artifact expiry.
 - [x] Public source `main` remains unchanged; Phase 1 Draft PR remains unmerged.
+
+## Phase 1 finalization attempt — 3 November 2026, latest evidence
+
+- [x] Real encrypted Supabase database and private Storage backup exists as encrypted GitHub Artifact `link-in-bio-encrypted-backup-7` in the **Private** `omegapiammani-collab/link-in-bio-backups` repository; backup run #41649973610 passed.
+- [x] A fresh private CI run #41664320484 independently downloaded and decrypted the encrypted artifact, checked media SHA-256/manifests and migration presence, and restored **all nine public application tables with data and their RLS policy definitions** into a disposable PostgreSQL 17 database. Auth dependencies in that test were explicitly synthetic stubs.
+- [x] Live SQL review: 9/9 public app tables have RLS and policies, Storage media bucket is Private, and Owner-related Storage policies exist. One real Auth user maps to one Owner.
+- [ ] **Full isolated Supabase Auth/Storage restoration** remains unverified; synthetic Auth stubs do not establish OAuth/session recovery, restored Storage metadata/bucket policies, or file-byte rehydration.
+- [ ] **Real non-Owner Google account test** remains blocked by having only one registered Auth identity. Obtain a second human-controlled Google sign-in and verify it cannot access `/admin` or private media.
+- [ ] **Non-empty media recovery** is unverified because the live media bucket currently has **zero** objects. Verify with a genuine file in a properly scoped test or dedicated isolated Supabase environment before closing.
+- [ ] **Off-GitHub retained encrypted copy** has not been independently verified. Download the encrypted artifact before **8 December 2026**, store it outside GitHub, and keep the existing recovery passphrase independently in Google Password Manager.
+- [ ] Supabase dashboard Email Provider persisted-disabled setting is not independently verified (only the user's prior confirmation). Confirm without enabling email-password signups.
+- [x] Private backup vault remains Private; the main public application PR #1 remains Draft/unmerged; no paid-tier upgrade or production restore occurred.
+
+**Decision:** Phase 1 remains **OPEN** until all mandatory acceptance gates have evidence. Never mark complete merely because encrypted backup and public table restore passed.
