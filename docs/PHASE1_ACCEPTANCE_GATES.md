@@ -44,3 +44,32 @@ Confirm Email Provider persisted disabled in Supabase Dashboard. Do not enable E
 ## Completion rule
 
 Phase 1 may be marked **complete** only after A–D have independently documented evidence, the Backup artifact is securely retained, and the final CI remains green. Passing RLS policy SQL checks, a synthetic nonempty media fixture, or a successful Admin denial alone does **not** waive the real Auth/Storage recovery requirement. Until then, PR #1 remains Draft and unmerged.
+
+## User-reported operational steps — 3 November 2026
+
+- [x] **Reported by the user**: downloaded the backup artifact and stored a copy outside GitHub. This is **not independently verified** by a file hash or a separate decryption attempt. The encryption recovery passphrase must remain available independently in the password manager.
+- [x] **Reported by the user**: used the Google Owner account to run the Admin Storage smoke test. **Pass/fail output was not provided**, and the test deletes the temporary file after upload/download, so this report cannot be used as evidence of a nonempty *archived* Storage backup.
+- [ ] **Off-GitHub verification**: confirm the offsite copy contains the original `link-in-bio-backup.tar.gz.gpg` (not just an empty ZIP or shortcut), verify SHA-256 against the extracted artifact, and perform one local decrypt/list test without logging or sharing the passphrase.
+- [ ] **Owner Storage test pass criteria**: user reports the exact success indication `ผ่าน: อัปโหลด ดาวน์โหลด ตรวจสอบข้อมูล และลบภาพทดสอบสำเร็จ` from the Admin test. Otherwise diagnose errors; do not assume a pass.
+- [ ] **True Non-Owner Storage HTTP** and **full Auth/Storage isolate** remain open.
+
+### Local isolation procedure (never run on the live project)
+
+Supabase supports a local Docker stack started with `supabase init` and `supabase start`. The current archive is a custom `pg_dump` of public/auth/storage and is **not identical** to a Supabase CLI-managed portable dump. Do not blindly `pg_restore` every managed schema over the CLI's initialized internal schemas.
+
+A safe manual recovery exercise has the following **gated** order:
+
+1. On a personal workstation or isolated CI host with Docker, create a disposable directory unrelated to the app's repository. Install a **pinned Supabase CLI** version. Inspect `supabase --help` and `supabase db --help` before proceeding.
+2. Run `supabase init` then `supabase start` with a **local-only** project ID and default local credentials. Verify the local API and local Postgres ports; never substitute the live `mmbhuxiejfqipttyujop` URI in any restore command. Do not log in to/link the CLI to the live project.
+3. In an isolated temporary directory, decrypt the **off-GitHub** `.tar.gz.gpg` using the recovery passphrase from the password manager, privately extract `database.dump` and `media-manifest.json`, and verify archive checksums and database catalog. Do not upload decrypted archives or commit them to Git.
+4. Inspect the local Supabase-managed `auth`/`storage` schema and the dump's object list to build an **explicit, reviewed** compatibility plan (roles, extensions, triggers, constraints, versions). Restore only after checking target compatibility; preserve a clean local database snapshot so failed tests are disposable.
+5. Apply `public` application tables/data and RLS in an isolated copy. Restore Auth/Storage only with a version-matched, Supabase-compatible plan. Verify Auth identities and Storage bucket metadata via local SQL **and** local API. External Google OAuth configuration, Google consent screen and JWT secrets are not contained in the database archive.
+6. For media bytes, **never copy the downloaded bytes directly into the self-hosted storage filesystem**: use the supported Storage/S3 API to import them, then download again through the local API and compare SHA-256. Since the currently archived bucket contains 0 objects, perform a separately scoped **synthetic nonempty-media exercise** without replacing the existing verified archive. A test fixture cannot pretend to be a preexisting archived production object.
+7. Run genuine local Owner and non-Owner authorization tests on list/download/insert/update/delete, then remove the disposable local stack and all plaintext files. Record only PASS/FAIL, versions, counts and hashes, not tokens or identities.
+
+**Further evidence required**: a finished local restore log showing Auth/Storage service compatibility, role/RLS checks and actual object-byte recovery. A simple `pg_restore --list` or nine-table-only recovery does not satisfy these gates.
+
+Official documentation:
+- https://supabase.com/docs/guides/local-development/cli/getting-started
+- https://supabase.com/docs/guides/self-hosting/restore-from-platform
+- https://supabase.com/docs/guides/self-hosting/copy-from-platform-s3
