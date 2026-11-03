@@ -185,3 +185,12 @@
 - [ ] Non-Owner Google Storage list/download/upload HTTP E2E is not proven: the Owner-only login callback signs out unauthorized accounts and the private bucket currently has zero objects.
 - [ ] Confirm nonempty Storage object backup and byte-for-byte recovery, full compatible Auth/Storage/OAuth restore, independent encrypted copy outside GitHub and persisted-disabled Email Provider before acceptance.
 - [x] No paid tier, no production restore and no merge of main.
+
+## User operational confirmation and safe local restore readiness (3 Nov 2026)
+- [x] **User-reported**: an encrypted GitHub backup artifact was downloaded and stored outside GitHub. The bytes, integrity and local decrypt have not been independently verified; mark offsite **custody reported, integrity pending**.
+- [x] **User-reported**: ran the Owner Google account Admin Storage smoke test, but the actual success/error message was not specified. Mark **test action performed, pass criterion unconfirmed**.
+- [x] Added `docs/PHASE1_ACCEPTANCE_GATES.md` with a controlled, local Docker/Supabase CLI compatibility and recovery procedure, including source database safeguards and Storage object-byte rehydration via the supported API rather than copying files into Storage internals.
+- [ ] Verify exact successful Owner Storage test result; test real Non-Owner Storage HTTP with a valid isolated test session and an object that actually exists.
+- [ ] Verify an off-GitHub `.tar.gz.gpg` copy and decrypt/list independently with the private recovery passphrase.
+- [ ] Full isolated Auth + Storage database recovery and API verification remains unpassed; archived private Storage bucket contained **zero media objects**. Do not infer nonempty media recovery from the Owner smoke test that deletes its own fixture.
+- [x] Keep application `main` untouched, PR Draft, live Supabase untouched, no paid upgrades.
