@@ -2,7 +2,7 @@ import { bindings, defineConfig, defineWorker } from "cf/config";
 
 export default defineConfig({
   worker: defineWorker({
-    name: "thai-link-in-bio",
+    name: "link-in-bio-preview",
     entrypoint: "vinext/server/fetch-handler",
     compatibilityDate: "2026-11-03",
     compatibilityFlags: ["nodejs_compat"],
