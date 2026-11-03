@@ -201,3 +201,9 @@
 - [ ] This test deliberately deletes the file, so the existing encrypted backup still has zero media objects. Independent nonempty-media restore and non-Owner Storage REST tests remain open.
 - [ ] Full Auth/Storage managed-to-isolated Supabase-compatible restore still needs a separate environment. A raw managed `pg_dump` is not automatically compatible with a vanilla PostgreSQL target; consult the Supabase portable roles/schema/data dump procedure before restore.
 - [ ] Confirm an off-GitHub GPG copy independently decrypts and checksums; user has already reported offsite custody, but cryptographic verification has not been done.
+
+## Off-GitHub encrypted artifact validation — completed locally by user, 3 November 2026
+- [x] Offsite custody reported and **successful local GPG decrypt + tar structure check visually confirmed from user-provided PowerShell screenshot**. Local SHA-256 of the encrypted GPG file: `8b5699021034673ae6cd3d1665a467e8387d8534bca4955103d5bd5cfd4dc897`.
+- [x] The passphrase was entered only into the local verification script. No passphrase was supplied to GitHub or this chat.
+- [ ] Independent comparison of the downloaded inner `.gpg` hash with a separately computed original inner-GPG hash is not complete; note that the GitHub Actions artifact ZIP digest is a different object/hash.
+- [ ] A full Auth/Storage API recovery and real non-Owner Storage E2E test still remain before formally closing Phase 1.
