@@ -55,5 +55,13 @@ class VerifyBackupTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "duplicate"):
                     mod.check_archive_tree(root)
 
+    def test_workflow_stages_migrations_before_validation(self):
+        workflow = (Path(__file__).parents[1] / ".github/workflows/backup-manual.yml").read_text()
+        staging = workflow.index("cp -R supabase/migrations backup/schema-migrations")
+        verification = workflow.index("python3 scripts/verify_backup.py")
+        encryption = workflow.index("gpg --batch")
+        self.assertLess(staging, verification)
+        self.assertLess(verification, encryption)
+
 if __name__ == "__main__":
     unittest.main()
