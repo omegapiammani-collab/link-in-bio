@@ -1,0 +1,81 @@
+name: Encrypted Backup (manual only - setup required)
+on:
+  workflow_dispatch:
+
+# This workflow will be runnable only after review/merge into the default branch,
+# and only after the required secrets have been added in GitHub settings.
+permissions:
+  contents: read
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Require protected backup secrets
+        env:
+          DATABASE_URL: ${{ secrets.BACKUP_DATABASE_URL }}
+          SERVICE_KEY: ${{ secrets.BACKUP_STORAGE_SERVICE_ROLE_KEY }}
+          ENCRYPTION_PASSPHRASE: ${{ secrets.BACKUP_ENCRYPTION_PASSPHRASE }}
+        run: |
+          set -eu
+          test -n "$DATABASE_URL" || { echo "Missing BACKUP_DATABASE_URL"; exit 1; }
+          test -n "$SERVICE_KEY" || { echo "Missing BACKUP_STORAGE_SERVICE_ROLE_KEY"; exit 1; }
+          test -n "$ENCRYPTION_PASSPHRASE" || { echo "Missing BACKUP_ENCRYPTION_PASSPHRASE"; exit 1; }
+          test "${#ENCRYPTION_PASSPHRASE}" -ge 24 || { echo "Backup passphrase too short"; exit 1; }
+
+      - name: Dump database using matching PostgreSQL version
+        env:
+          DATABASE_URL: ${{ secrets.BACKUP_DATABASE_URL }}
+        run: |
+          set -euo pipefail
+          umask 077
+          mkdir -p backup/media
+          docker run --rm --network host -e DATABASE_URL \
+            -v "$PWD/backup:/work" postgres:17 \
+            sh -ec 'pg_dump --dbname="$DATABASE_URL" --format=custom --no-owner --no-acl --schema=public --schema=auth --schema=storage --file=/work/database.dump'
+          test -s backup/database.dump
+
+      - name: Download private Storage objects and manifest
+        env:
+          SUPABASE_URL: https://mmbhuxiejfqipttyujop.supabase.co
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.BACKUP_STORAGE_SERVICE_ROLE_KEY }}
+          BACKUP_MEDIA_DIR: backup/media
+          BACKUP_MANIFEST_PATH: backup/media-manifest.json
+        run: python3 scripts/backup_storage.py
+
+      - name: Archive and encrypt before uploading anywhere
+        env:
+          BACKUP_ENCRYPTION_PASSPHRASE: ${{ secrets.BACKUP_ENCRYPTION_PASSPHRASE }}
+        run: |
+          set -euo pipefail
+          umask 077
+          cp -R supabase/migrations backup/schema-migrations
+          date -u +%Y-%m-%dT%H:%M:%SZ > backup/created-at-utc.txt
+          sha256sum backup/database.dump backup/media-manifest.json > backup/sha256-manifest.txt
+          tar czf /tmp/link-in-bio-backup.tar.gz -C backup .
+          gpg --batch --yes --pinentry-mode loopback --symmetric \
+            --cipher-algo AES256 --s2k-digest-algo SHA256 --s2k-mode 3 \
+            --output link-in-bio-backup.tar.gz.gpg \
+            --passphrase-fd 3 /tmp/link-in-bio-backup.tar.gz \
+            3<<<"$BACKUP_ENCRYPTION_PASSPHRASE"
+          test -s link-in-bio-backup.tar.gz.gpg
+          gpg --batch --yes --pinentry-mode loopback --decrypt \
+            --passphrase-fd 3 link-in-bio-backup.tar.gz.gpg \
+            3<<<"$BACKUP_ENCRYPTION_PASSPHRASE" | tar tzf - > /dev/null
+          shred -u /tmp/link-in-bio-backup.tar.gz || rm -f /tmp/link-in-bio-backup.tar.gz
+          rm -rf backup
+
+      - name: Upload encrypted archive only
+        uses: actions/upload-artifact@v4
+        with:
+          name: link-in-bio-encrypted-backup-${{ github.run_number }}
+          path: link-in-bio-backup.tar.gz.gpg
+          if-no-files-found: error
+          retention-days: 35
+          compression-level: 0
+
+      - name: Cleanup temporary encrypted file
+        if: always()
+        run: rm -f link-in-bio-backup.tar.gz.gpg
