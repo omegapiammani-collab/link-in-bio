@@ -175,3 +175,13 @@
 - [x] **Phase 1 Non-Owner Admin authorization acceptance PASS (user-observed with Auth-log corroboration).** The previous failed OAuth attempt at 15:44:51 UTC remains documented as a distinct transient upstream issue and does not invalidate this successful retry.
 - [ ] Non-Owner direct private Storage list/download/upload tests remain outstanding; Admin denial cannot establish separate Storage API authorization.
 - [ ] Full isolated Supabase-compatible Auth/Storage backup restore, non-empty media restoration and independent off-GitHub encrypted artifact copy remain outstanding. Phase 1 is not fully closed.
+
+## Storage and isolated Auth/Storage recovery — additional verification (3 November 2026)
+
+- [x] Live Supabase read-only `pg_policies` review: `link-in-bio-media` private objects have four `authenticated` Owner-only policies, one per SELECT/INSERT/UPDATE/DELETE; WHERE applicable, the clauses include `bucket_id='link-in-bio-media'` and `app_private.is_owner()`.
+- [x] Read-only SQL Transaction, `SET LOCAL ROLE authenticated`, synthetic non-Owner JWT subject: `app_private.is_owner()=false`, no visible Owner mapping. Rollback completed; no data writes. This demonstrates policy behavior only for a simulated principal, not a genuine non-Owner HTTP access token.
+- [x] Backup artifact integrity, all nine application tables and RLS isolated PostgreSQL 17 restore still PASSED in private Actions #41668784534.
+- [ ] New attempted direct `auth` and `storage` restore from the REAL encrypted artifact in the same isolated PostgreSQL 17 job **FAILED in the pre-data section** because a vanilla Postgres image lacks Supabase-specific prerequisites. No real Supabase data was changed. Use a version-compatible, fully isolated Supabase stack per the official recovery instructions for the next step.
+- [ ] Non-Owner Google Storage list/download/upload HTTP E2E is not proven: the Owner-only login callback signs out unauthorized accounts and the private bucket currently has zero objects.
+- [ ] Confirm nonempty Storage object backup and byte-for-byte recovery, full compatible Auth/Storage/OAuth restore, independent encrypted copy outside GitHub and persisted-disabled Email Provider before acceptance.
+- [x] No paid tier, no production restore and no merge of main.
