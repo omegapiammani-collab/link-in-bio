@@ -73,3 +73,15 @@ Official documentation:
 - https://supabase.com/docs/guides/local-development/cli/getting-started
 - https://supabase.com/docs/guides/self-hosting/restore-from-platform
 - https://supabase.com/docs/guides/self-hosting/copy-from-platform-s3
+
+### Local encrypted copy verification helper (Owner workstation only)
+
+The repo includes `scripts/verify_offsite_backup.sh` plus a synthetic-only offline test. On a **trusted machine** with `bash`, `gpg`, `tar`, and GNU `sha256sum` installed, inspect the helper script, then run:
+
+```bash
+bash scripts/verify_offsite_backup.sh "/your/private/location/link-in-bio-backup.tar.gz.gpg"
+```
+
+Enter the separately stored GPG recovery passphrase **only when prompted on that local machine**. The helper prints the encrypted file's SHA-256 and tests streaming GPG decryption followed by `tar` archive listing. It **does not** extract plaintext files to disk, upload data, or print archive member names. A wrong passphrase or corrupted archive returns a nonzero exit code. Keep the `.gpg` file and passphrase in separate secure locations. Do not paste the passphrase or plaintext output into chat or GitHub.
+
+**Important:** GitHub's recorded Artifact SHA-256 is a hash of the GitHub artifact container, not automatically the `.gpg` file you extracted from the downloaded ZIP. Do not compare these hashes as if identical. The successful local decrypt/list test proves ciphertext readability, **not** a complete Supabase restore. On macOS, install GNU coreutils for `sha256sum` if unavailable.
