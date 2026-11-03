@@ -102,3 +102,15 @@ The Owner Windows device does not have Docker Desktop. **No local installation i
 - [ ] This does **not** restore a functioning Supabase Auth server, Google OAuth provider configuration, Storage service, bucket metadata, file bytes, or Non-Owner Storage API behavior.
 - [ ] The actual archived Storage media count is zero. A synthetic fixture would only prove a separate rehearsal, not that a previously existing media file is in this backup.
 - [ ] Full system acceptance requires a **Supabase-compatible isolated stack** (local Docker Desktop is one option, but a fully disposable CI runner may also host the local Docker stack if sufficient resources/available quotas), with a reviewed portable roles/schema/data export or explicit compatible managed schema restore plan. No new paid Supabase project, no live restore, no CLI connection to the hosted production project.
+
+## GitHub-hosted Supabase Local Stack proof (3 November 2026)
+
+No Docker Desktop installation on the Owner's Windows computer is needed for these completed tests. The PRIVATE backup repository launched isolated PostgreSQL + GoTrue Auth + Storage API using **Supabase CLI 2.81.3** in GitHub Actions:
+
+- [x] [Synthetic Auth + Storage API E2E #41680873457](https://github.com/omegapiammani-collab/link-in-bio-backups/actions/runs/41680873457) **PASS**: two synthetic Auth accounts; local Owner JWT permitted upload/download/byte-compare/delete; local non-Owner JWT denied read/write/list access to a known private fixture. This tests temporary *synthetic* RLS policies, not the live app's Google-account Storage tokens.
+- [x] [Real encrypted backup import #41682180551](https://github.com/omegapiammani-collab/link-in-bio-backups/actions/runs/41682180551) **PASS for bounded recovery**: actual backed-up `auth.users` data imported into an initialized Supabase Auth schema and was readable via its Auth admin API. Real private `storage.buckets` metadata (`id`, `name`, `public`) was imported through a **restricted projection** after the full-table COPY proved incompatible, and the local Storage API verified it was private.
+- [ ] The real backup **has not** been fully restored to a working Supabase project. Complete Auth identities, Google OAuth configuration and end-user session recovery, all Storage-managed metadata and policies, live-app RLS, and byte restoration of genuine media (archived zero files) are not proven.
+- [ ] For Phase 1 final acceptance, perform a combined environment migration of all nine app tables plus Auth/Storage data with compatible schemas, then check end-to-end Auth and Owner/Non-Owner APIs; use a separately created nonempty fixture to test the media-byte import process. Do not substitute individual table/copy-projection passes for full recovery.
+- [x] No paid project, live Supabase connection, public unencrypted artifact, source-main merge or production rollout.
+
+Private evidence and scope: [backup vault README](https://github.com/omegapiammani-collab/link-in-bio-backups/blob/main/README.md).
