@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""Download all bytes in the private Link-in-Bio bucket for an encrypted backup.
+"""Back up bytes from the private Supabase Storage bucket.
 
-This script runs only inside GitHub Actions with protected secrets. It never
-prints response bodies, auth tokens or object names to workflow logs.
+Requires protected GitHub Actions environment secrets. No API key, object path,
+or object contents are written to workflow logs.
 """
 import hashlib
 import json
@@ -17,75 +17,87 @@ KEY = os.environ["SUPABASE_SERVICE_ROLE_KEY"]
 BUCKET = "link-in-bio-media"
 ROOT = Path(os.environ.get("BACKUP_MEDIA_DIR", "backup/media")).resolve()
 ROOT.mkdir(parents=True, exist_ok=True)
-HEADERS = {
-    "apikey": KEY,
-    "Authorization": f"Bearer {KEY}",
-}
+HEADERS = {"apikey": KEY, "Authorization": f"Bearer {KEY}"}
 records = []
-pending_prefixes = [""]
-visited_prefixes = set()
+pending = [""]
+visited = set()
 
-while pending_prefixes:
-    prefix = pending_prefixes.pop()
-    if prefix in visited_prefixes:
+
+def request_json(prefix: str, offset: int) -> list:
+    payload = json.dumps({
+        "prefix": prefix, "limit": 1000, "offset": offset,
+        "sortBy": {"column": "name", "order": "asc"},
+    }).encode()
+    req = Request(
+        f"{BASE}/storage/v1/object/list/{BUCKET}",
+        data=payload,
+        headers={**HEADERS, "Content-Type": "application/json"},
+        method="POST",
+    )
+    with urlopen(req, timeout=45) as response:
+        result = json.load(response)
+    if not isinstance(result, list):
+        raise RuntimeError("Unexpected Storage listing format")
+    return result
+
+
+while pending:
+    prefix = pending.pop()
+    if prefix in visited:
         continue
-    visited_prefixes.add(prefix)
+    visited.add(prefix)
     offset = 0
     while True:
-        payload = json.dumps({
-            "prefix": prefix, "limit": 1000, "offset": offset,
-            "sortBy": {"column": "name", "order": "asc"}
-        }).encode()
-        req = Request(
-            f"{BASE}/storage/v1/object/list/{BUCKET}",
-            data=payload,
-            headers={**HEADERS, "Content-Type": "application/json"},
-            method="POST",
-        )
-        with urlopen(req, timeout=45) as response:
-            batch = json.load(response)
-        if not isinstance(batch, list):
-            raise RuntimeError("Unexpected Storage list response")
+        batch = request_json(prefix, offset)
         if not batch:
             break
         for obj in batch:
-            name = prefix + obj["name"]
-        # Supabase list API returns virtual folder entries with null id.
-        if obj.get("id") is None:
-            pending_prefixes.append(name.rstrip("/") + "/")
-            continue
-            # Reject traversal and ambiguous paths; preserve folder hierarchy.
-            parts = name.split("/")
+            full_name = prefix + obj["name"]
+            # Supabase lists virtual folder entries as objects with null id.
+            if obj.get("id") is None:
+                pending.append(full_name.rstrip("/") + "/")
+                continue
+
+            parts = full_name.split("/")
             if (
-                not name or name.startswith("/")
+                not full_name or full_name.startswith("/")
                 or any(part in ("", ".", "..") for part in parts)
-                or "\\" in name
+                or chr(92) in full_name
             ):
                 raise RuntimeError("Unsafe Storage object path")
-            target = (ROOT / name).resolve()
-            if not target.is_relative_to(ROOT):
-                raise RuntimeError("Storage object escapes backup root")
-            target.parent.mkdir(parents=True, exist_ok=True)
-            safe_name = quote(name, safe="/")
-            get = Request(
-                f"{BASE}/storage/v1/object/authenticated/{BUCKET}/{safe_name}",
-                headers=HEADERS, method="GET"
+            destination = (ROOT / full_name).resolve()
+            if not destination.is_relative_to(ROOT):
+                raise RuntimeError("Storage path traversal detected")
+            destination.parent.mkdir(parents=True, exist_ok=True)
+
+            url = (
+                f"{BASE}/storage/v1/object/authenticated/"
+                f"{BUCKET}/{quote(full_name, safe='/')}"
             )
-            sha = hashlib.sha256()
-            total = 0
+            req = Request(url, headers=HEADERS, method="GET")
+            digest = hashlib.sha256()
+            length = 0
             try:
-                with urlopen(get, timeout=120) as resp, target.open("wb") as out:
-                    while chunk := resp.read(1024 * 1024):
-                        out.write(chunk)
-                        sha.update(chunk)
-                        total += len(chunk)
-            except HTTPError as e:
-                raise RuntimeError(f"Failed to fetch media: HTTP {e.code}") from None
-            records.append({"path": name, "bytes": total, "sha256": sha.hexdigest()})
+                with urlopen(req, timeout=120) as response, destination.open("wb") as output:
+                    while True:
+                        chunk = response.read(1024 * 1024)
+                        if not chunk:
+                            break
+                        output.write(chunk)
+                        digest.update(chunk)
+                        length += len(chunk)
+            except HTTPError as exc:
+                raise RuntimeError(f"Storage download failed (HTTP {exc.code})") from None
+            records.append({
+                "path": full_name,
+                "bytes": length,
+                "sha256": digest.hexdigest(),
+            })
         offset += len(batch)
         if len(batch) < 1000:
             break
-    
-(Path(os.environ.get("BACKUP_MANIFEST_PATH", "backup/media-manifest.json"))
-    .write_text(json.dumps(records, ensure_ascii=False, indent=2), encoding="utf-8"))
-print(f"Storage backup completed: {len(records)} file(s), no filenames logged")
+
+manifest = Path(os.environ.get("BACKUP_MANIFEST_PATH", "backup/media-manifest.json"))
+manifest.parent.mkdir(parents=True, exist_ok=True)
+manifest.write_text(json.dumps(records, ensure_ascii=False, indent=2), encoding="utf-8")
+print(f"Storage export finished: {len(records)} file(s)")
