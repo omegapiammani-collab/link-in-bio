@@ -9,13 +9,19 @@
 - [x] Security Advisor has no findings after restricting the existing `rls_auto_enable()` function.
 - [ ] Validate RLS with real authenticated Owner and non-Owner sessions (essential).
 
-## Google OAuth — pending setup by account Owner
-- [ ] Create Google OAuth web client in Google Cloud Console; use the **Supabase callback URL** from the Supabase Google provider settings as an Authorized Redirect URI.
-- [ ] Put OAuth client ID/secret in Supabase > Authentication > Providers > Google. Never paste secrets into ChatGPT or repository.
+## Google OAuth — user reported configuration completed; live login not yet verified
+- [x] User reported creating Google OAuth web client in Google Cloud Console; use the **Supabase callback URL** from the Supabase Google provider settings as an Authorized Redirect URI.
+- [x] User reported entering OAuth client ID/secret in Supabase > Authentication > Providers > Google. Never paste secrets into ChatGPT or repository.
 - [ ] Set Supabase Site URL and allow `http://localhost:3000/auth/callback` during local testing; later add only the exact Cloudflare preview/production origin.
 - [ ] Sign in using the intended Google account to create `auth.users`.
 - [ ] Read the new User UUID from Supabase Auth dashboard, then bootstrap `owner_config` via privileged SQL and match `OWNER_AUTH_USER_ID` server-only setting.
 - [ ] Confirm Owner permitted, non-Owner and signed-out access blocked; test callback, cookie, logout.
+
+## Live RLS negative authorization test — verified 3 November 2026
+- [x] In a transaction, simulated an `authenticated` role bearing a non-Owner UUID. `app_private.is_owner()` returned false.
+- [x] SELECT queries for pages, drafts and historical versions returned no rows.
+- [x] Attempted INSERT to `public.pages` was denied with SQLSTATE `42501`, 'new row violates row-level security policy'. No security-test page was created.
+- [ ] Repeat Owner positive-case and OAuth browser tests with a real authenticated session.
 
 ## Cloudflare Workers Free — pending
 - [x] Cloudflare connection verified and official Workers/Next.js guidance consulted.
