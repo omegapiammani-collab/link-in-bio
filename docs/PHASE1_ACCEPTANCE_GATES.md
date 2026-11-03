@@ -50,7 +50,7 @@ Phase 1 may be marked **complete** only after A–D have independently documente
 - [x] **Reported by the user**: downloaded the backup artifact and stored a copy outside GitHub. This is **not independently verified** by a file hash or a separate decryption attempt. The encryption recovery passphrase must remain available independently in the password manager.
 - [x] **Reported by the user**: used the Google Owner account to run the Admin Storage smoke test. **Pass/fail output was not provided**, and the test deletes the temporary file after upload/download, so this report cannot be used as evidence of a nonempty *archived* Storage backup.
 - [ ] **Off-GitHub verification**: confirm the offsite copy contains the original `link-in-bio-backup.tar.gz.gpg` (not just an empty ZIP or shortcut), verify SHA-256 against the extracted artifact, and perform one local decrypt/list test without logging or sharing the passphrase.
-- [ ] **Owner Storage test pass criteria**: user reports the exact success indication `ผ่าน: อัปโหลด ดาวน์โหลด ตรวจสอบข้อมูล และลบภาพทดสอบสำเร็จ` from the Admin test. Otherwise diagnose errors; do not assume a pass.
+- [x] **Owner Storage end-to-end PASS (user-observed, 3 Nov 2026):** user explicitly confirmed the Preview Admin smoke test completed all four steps: upload, download, byte-for-byte comparison and deletion. This is a genuine Owner UI test reported by the user, not an independently captured HTTP transcript; test fixture was deleted, so **does not** prove a non-empty backup or non-Owner Storage denial.
 - [ ] **True Non-Owner Storage HTTP** and **full Auth/Storage isolate** remain open.
 
 ### Local isolation procedure (never run on the live project)
