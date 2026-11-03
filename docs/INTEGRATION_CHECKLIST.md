@@ -95,3 +95,14 @@
 - [ ] Independently inspect persisted provider configuration (the connected Browser Use session has not authenticated to Supabase dashboard).
 - [ ] User should sign in via Google again after switching Email Provider off, verify /admin and then log out.
 - [ ] Supabase Security Advisor continues to show the Pro-only leaked-password protection warning; avoid upgrading merely to remove this warning. Since Google-only is intended, verify Email Provider remains disabled.
+
+## Phase 1 auth regression acceptance — 3 November 2026
+- [x] User confirmed Google Owner Login **and** Logout still work after disabling Email Provider in Supabase Dashboard.
+- [x] The user previously supplied screenshots showing Google enabled and Email enabled, and later reported saving Email as disabled. The latest persisted provider toggle has not been independently read through an authenticated Dashboard browser session.
+- [x] Post-logout database check: one Google identity, one authorized Owner, zero live Auth sessions, zero leftover Storage objects.
+- [x] User confirmed real Storage API upload, download, byte verification, and deletion via Owner Admin button.
+- [x] Staged encrypted-backup workflow repaired to copy schema migrations **before** pre-encryption archive integrity checks; tests now assert staging/verification/encryption order.
+- [x] Large PostgreSQL dump header check now reads only 5 bytes, rather than loading the whole database.
+- [ ] Manual encrypted backup run and **separate isolated restore drill** remain untested and cannot be represented as complete.
+- [ ] Real non-Owner Google session and deny-access regression remain untested; no second Google account was requested or changed.
+- [ ] Confirm new CI run and Cloudflare builds before merging; leave PR as Draft and keep Production disabled.
