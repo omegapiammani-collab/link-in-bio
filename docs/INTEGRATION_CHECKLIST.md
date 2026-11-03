@@ -45,3 +45,13 @@
 - Cloudflare Worker `link-in-bio-preview` deployed from the feature branch; its runtime Owner UUID is set as an encrypted secret binding.
 - Next step: use the Google sign-in button again and verify the protected Admin screen in the browser. Do not call Phase 1 complete until cookie persistence and logout are tested.
 - Supabase Advisor currently warns about leaked-password protection being off. This app uses Google-only login; review the setting if password sign-in is enabled.
+
+## Post-login security test — 3 November 2026
+- [x] Owner confirmed sign-in with Google leads to protected Admin dashboard.
+- [x] Supabase: one Google user, one Owner and one Auth session.
+- [x] Owner could insert/read a disposable page in a transaction; a different authenticated UUID could not SELECT it; rolled back and confirmed no residual test page.
+- [x] All nine public tables have RLS enabled.
+- [x] GitHub Actions Checks run #25 completed successfully.
+- [ ] Owner browser: click sign out; verify /admin redirects to /login; sign back in.
+- [ ] Test /admin unauthorized in a separate browser and non-Owner Google account.
+- [ ] Review password protection warning and 4 missing foreign-key indexes before production.
