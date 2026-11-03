@@ -124,3 +124,13 @@
 - [ ] **GitHub platform blocker:** `workflow_dispatch` requires the workflow file to exist on the repository's default branch. `.github/workflows/backup-manual.yml` only exists on `feature/phase-1-foundation`; therefore the manual workflow must not be represented as runnable yet. Do not merge or push to `main` without explicit user approval.
 - [ ] Verify backup DATABASE URL connectivity, encrypted archive actually uploaded, archive retained outside Supabase, and restore into isolated Supabase-compatible target. No live-run has occurred.
 - [ ] A separate real non-Owner Google login and unauthorized Admin access check are required before closing Phase 1.
+
+## Additional real-backup recovery checks — 3 November 2026
+- [x] Backup vaulted exclusively in Private `omegapiammani-collab/link-in-bio-backups`: Actions #41649973610, encrypted Artifact ID 13238095372, retained until 8 December 2026.
+- [x] Independently downloaded, decrypted and validated the real stored artifact (checksum, media manifest and migration presence) in private Actions #41660457480.
+- [x] Verified the real backup catalog includes **all nine application table definitions** and Auth/Storage table catalog entries.
+- [x] Restored **two independent backed-up public tables** (`backup_manifests`, `audit_events`) in isolated PostgreSQL 17, via private Actions #41660457480. This is *limited restore evidence*, not a complete recovery.
+- [ ] **Do not mark completed:** full isolated Supabase-compatible restore, including all 9 application tables, Auth/Storage metadata, RLS/roles, and actual media bytes.
+- [ ] **Do not mark completed:** real Google login from a separate non-Owner account.
+- [ ] Independently retain an encrypted off-GitHub copy before GitHub Artifact expiry.
+- [x] Public source `main` remains unchanged; Phase 1 Draft PR remains unmerged.
