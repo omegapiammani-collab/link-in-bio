@@ -15,8 +15,8 @@ jobs:
           node-version: '22'
       - run: npm ci --no-audit --no-fund
       - run: npm run check
-      - name: Test backup script offline (no credentials)
-        run: python3 -m unittest discover -s tests -p 'test_backup_storage.py' -v
+      - name: Test backup scripts offline (no credentials)
+        run: python3 -m unittest discover -s tests -p 'test_*.py' -v
       - run: npm run build
       - name: Validate Cloudflare vinext production build
         run: npm run build:vinext
