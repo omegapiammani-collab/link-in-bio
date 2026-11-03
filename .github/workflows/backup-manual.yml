@@ -43,7 +43,10 @@ jobs:
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.BACKUP_STORAGE_SERVICE_ROLE_KEY }}
           BACKUP_MEDIA_DIR: backup/media
           BACKUP_MANIFEST_PATH: backup/media-manifest.json
-        run: python3 scripts/backup_storage.py
+        run: |
+          set -euo pipefail
+          umask 077
+          python3 scripts/backup_storage.py
 
       - name: Stage schema migrations for integrity validation
         run: cp -R supabase/migrations backup/schema-migrations
@@ -85,6 +88,12 @@ jobs:
           retention-days: 35
           compression-level: 0
 
-      - name: Cleanup temporary encrypted file
+      - name: Always remove plaintext staging, temporary archive and encrypted local file
         if: always()
-        run: rm -f link-in-bio-backup.tar.gz.gpg
+        run: |
+          set -euo pipefail
+          if [ -f /tmp/link-in-bio-backup.tar.gz ]; then
+            shred -u /tmp/link-in-bio-backup.tar.gz || rm -f /tmp/link-in-bio-backup.tar.gz
+          fi
+          rm -rf backup
+          rm -f link-in-bio-backup.tar.gz.gpg
