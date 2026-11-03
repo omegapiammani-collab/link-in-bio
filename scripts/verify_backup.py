@@ -24,7 +24,9 @@ def check_archive_tree(root: Path) -> tuple[int, int]:
     if not manifest.is_file():
         raise ValueError("Missing media manifest")
 
-    if not dump.read_bytes()[:5] == b"PGDMP":
+    with dump.open("rb") as archive:
+        signature = archive.read(5)
+    if signature != b"PGDMP":
         raise ValueError("Invalid PostgreSQL custom archive header")
 
     data = json.loads(manifest.read_text(encoding="utf-8"))
