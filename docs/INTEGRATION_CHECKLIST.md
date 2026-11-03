@@ -207,3 +207,11 @@
 - [x] The passphrase was entered only into the local verification script. No passphrase was supplied to GitHub or this chat.
 - [ ] Independent comparison of the downloaded inner `.gpg` hash with a separately computed original inner-GPG hash is not complete; note that the GitHub Actions artifact ZIP digest is a different object/hash.
 - [ ] A full Auth/Storage API recovery and real non-Owner Storage E2E test still remain before formally closing Phase 1.
+
+## Isolated Supabase CLI Stack through Private GitHub Actions — 3 November 2026
+
+- [x] [Synthetic local services #41680873457](https://github.com/omegapiammani-collab/link-in-bio-backups/actions/runs/41680873457): Auth + Storage API with two **synthetic** signed user JWTs, Owner image upload/download byte compare/delete, and non-Owner forbidden upload/download/list on known fixture. **Does not test live account tokens**.
+- [x] [Real encrypted backup #41682180551](https://github.com/omegapiammani-collab/link-in-bio-backups/actions/runs/41682180551): genuine Auth users recovered into Supabase-initialized managed schema and read through Auth API. Genuine private Storage bucket's `id`, `name`, `public=false` fields projected and recovered into initialized Storage, then read through Storage API. All testing isolated on private GitHub Docker runner; no local Docker Desktop and no live data changes.
+- [ ] Complete Auth/Storage schema, all settings/policies, Google OAuth sessions and real media bytes **not yet restored end-to-end**. Full table COPY from old Storage schema was incompatible; explicit 3-column projection is a partial recovery test.
+- [ ] Verify that real Google non-Owner credentials cannot access app Storage HTTP, and validate full combined recovery with app tables/RLS and a separate nonempty media fixture.
+- [x] Phase 1 stays OPEN, PR Draft and unmerged; no paid tiers.
