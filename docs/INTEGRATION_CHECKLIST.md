@@ -76,3 +76,14 @@
 - [ ] Perform actual authenticated media upload/download and anonymous/non-Owner access denial tests. Catalog/policy tests are not sufficient for full Storage acceptance.
 - [ ] Create four encrypted weekly *off-Supabase* backup sets, including database records **and actual Storage file bytes**, and independently restore-test at least one set. See `docs/BACKUP_AND_RESTORE_FREE.md`. A runbook is **not** an operational backup.
 - [ ] Decide on secure server-only rate limiting, audit event writers, and atomic version publication before any production launch.
+
+## Storage RLS and backup implementation — 3 November 2026
+- [x] Transaction-based Storage RLS positive test: simulated authenticated Owner can INSERT/SELECT a temporary row in `storage.objects`.
+- [x] Simulated non-Owner cannot SELECT the same Storage metadata; a non-Owner INSERT was rejected with SQLSTATE `42501`.
+- [x] Storage test transaction rolled back and did not create a physical object or orphaned metadata.
+- [x] Implemented a manual-only, secret-gated GitHub Actions backup workflow `.github/workflows/backup-manual.yml` with Postgres 17 dump, recursive private Storage download, checksums and encrypted artifact retention. **Not configured, run or restore-tested.**
+- [x] Added offline tests for Storage backup recursion and traversal validation; GitHub CI runs them without credentials.
+- [x] Added Owner-only `/admin` button to exercise the actual Storage API (temporary image upload, download/byte check and delete).
+- [ ] Owner must press `เริ่มทดสอบ Storage` on the refreshed Preview Admin page and report outcome. RLS tests are not substitutes for this real API test.
+- [ ] Finalize encrypted backup secrets in GitHub Actions directly (do not share them in chat), run manual backup only after approved merge, download and verify encrypted archive, restore-test in isolated environment; then enable a weekly schedule if it stays within free quotas.
+- [ ] Supabase dashboard Auth > Providers inspection remains pending because authenticated dashboard access was not available. Do not claim Email/Password disabled.
