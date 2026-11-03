@@ -15,7 +15,7 @@
 - [ ] Set Supabase Site URL and allow `http://localhost:3000/auth/callback` during local testing; later add only the exact Cloudflare preview/production origin.
 - [x] Google OAuth sign-in created exactly one Supabase Auth user and Google identity on 3 November 2026.
 - [x] Bootstrapped the unique Google identity as the sole `owner_config` row using privileged SQL and configured `OWNER_AUTH_USER_ID` as a Cloudflare runtime secret; UUID is not committed to Git.
-- [x] Simulated authenticated Owner: `app_private.is_owner()` returns true. Simulated non-Owner: returns false.\n- [ ] Confirm Google OAuth callback session cookies, actual `/admin` access, sign-out, and protected access in a real browser.
+- [x] Simulated authenticated Owner: `app_private.is_owner()` returns true. Simulated non-Owner: returns false.\n- [x] Owner confirmed Google OAuth callback led to `/admin`, browser sign-out removed access, and unauthenticated /admin redirect to /login was independently checked.
 
 ## Live RLS negative authorization test — verified 3 November 2026
 - [x] In a transaction, simulated an `authenticated` role bearing a non-Owner UUID. `app_private.is_owner()` returned false.
@@ -52,6 +52,16 @@
 - [x] Owner could insert/read a disposable page in a transaction; a different authenticated UUID could not SELECT it; rolled back and confirmed no residual test page.
 - [x] All nine public tables have RLS enabled.
 - [x] GitHub Actions Checks run #25 completed successfully.
-- [ ] Owner browser: click sign out; verify /admin redirects to /login; sign back in.
+- [x] Owner confirmed sign-out prevents returning to /admin until signing in again; Supabase later showed zero active sessions.
 - [ ] Test /admin unauthorized in a separate browser and non-Owner Google account.
-- [ ] Review password protection warning and 4 missing foreign-key indexes before production.
+- [ ] Review Supabase password protection warning before production.\n- [x] Four missing foreign-key indexes added via migration foreign_key_indexes, verified no unindexed-FK advisories remain.
+
+## Security and database performance acceptance — 3 November 2026
+- [x] Browser Owner authenticated and signed out successfully, with protected /admin inaccessible after logout (owner confirmation).
+- [x] Independent no-cookie browser test of /admin redirects to /login; /auth/callback without OAuth code safely redirects to /login?error=callback.
+- [x] Supabase auth.sessions count dropped to zero after logout.
+- [x] Added and applied migration `foreign_key_indexes` with 4 B-tree indexes. Supabase performance advisor no longer flags any unindexed foreign keys. The unused-index informational notices are expected on an almost-empty database; retain indexes until representative traffic exists.
+- [x] GitHub checks workflow extended to validate `npm ci`, Next.js build and Cloudflare vinext build (CI result must be confirmed on latest commit).
+- [ ] Investigate Supabase leaked-password-protection warning and Google-only sign-in settings.
+- [ ] Non-Owner real Google-session denial remains untested; RLS negative session simulations and anonymous browser denial passed.
+- [ ] Backup/export restore exercise, Supabase Storage policies, rate-limiting, audit-write and page-version publishing transaction controls are pending.
