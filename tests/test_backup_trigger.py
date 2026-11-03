@@ -27,7 +27,7 @@ class BackupBranchTriggerTests(unittest.TestCase):
         start = self.workflow.index("  preflight:")
         end = self.workflow.index("\n  backup:", start)
         self.assertNotIn("secrets.", self.workflow[start:end])
-        self.assertIn("mode=preflight", self.workflow[start:end])
+        self.assertIn('"$mode" == "preflight"', self.workflow[start:end])
 
 
 if __name__ == "__main__":
