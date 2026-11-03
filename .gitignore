@@ -1,0 +1,13 @@
+.next/
+node_modules/
+.env
+.env.*
+!.env.example
+*.tsbuildinfo
+.DS_Store
+coverage/
+.wrangler/
+.dev.vars
+/dist/
+.vinext/
+.cloudflare/

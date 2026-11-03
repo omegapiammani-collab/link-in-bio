@@ -1,0 +1,230 @@
+name: Encrypted Backup (manual only - setup required)
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - feature/phase-1-foundation
+    paths:
+      - ops/backup-request.txt
+
+# A push to the request file can exercise a no-secret preflight on the feature
+# branch. Only an explicit request mode=live invokes the encrypted backup job.
+# workflow_dispatch remains unavailable until this workflow exists on default.
+permissions:
+  contents: read
+
+jobs:
+  preflight:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      mode: ${{ steps.request.outputs.mode }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify isolated feature-branch request and toolchain (no secrets)
+        id: request
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REF" = "refs/heads/feature/phase-1-foundation"
+          test -f .github/workflows/backup-manual.yml
+          test -f scripts/backup_storage.py
+          test -f scripts/verify_backup.py
+          test -d supabase/migrations
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            mode="live"
+          else
+            test -f ops/backup-request.txt
+            mode="$(sed -n 's/^mode=//p' ops/backup-request.txt)"
+            [[ "$mode" == "preflight" || "$mode" == "secret-check" || "$mode" == "connection-check" || "$mode" == "live" ]] || { echo "Invalid request mode"; exit 1; }
+            test "$(grep -c '^mode=' ops/backup-request.txt)" -eq 1
+          fi
+          if [[ "$mode" == "live" && "${{ github.event.repository.private }}" != "true" ]]; then
+            echo "::error::Live backup blocked: this repository is public and GitHub Actions artifacts may be readable by public repository readers. Use an approved private backup destination first."
+            exit 1
+          fi
+          if [[ "$mode" == "preflight" ]]; then
+            command -v gpg >/dev/null
+            command -v docker >/dev/null
+            python3 -m py_compile scripts/backup_storage.py scripts/verify_backup.py
+            echo "Feature-branch backup preflight PASSED; no secrets read; no backup requested"
+          else
+            echo "Explicit $mode request accepted; secret-bearing jobs require configured GitHub secrets"
+          fi
+          echo "mode=$mode" >> "$GITHUB_OUTPUT"
+
+  secret-readiness:
+    needs: preflight
+    if: needs.preflight.outputs.mode == 'secret-check'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Check required secrets without printing values or contacting Supabase
+        env:
+          BACKUP_DATABASE_URL: ${{ secrets.BACKUP_DATABASE_URL }}
+          BACKUP_STORAGE_SERVICE_ROLE_KEY: ${{ secrets.BACKUP_STORAGE_SERVICE_ROLE_KEY }}
+          BACKUP_ENCRYPTION_PASSPHRASE: ${{ secrets.BACKUP_ENCRYPTION_PASSPHRASE }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          set +x
+          missing=0
+          for name in BACKUP_DATABASE_URL BACKUP_STORAGE_SERVICE_ROLE_KEY BACKUP_ENCRYPTION_PASSPHRASE; do
+            if [[ -z "${!name}" ]]; then
+              echo "::error::Missing required repository secret: $name"
+              missing=1
+            else
+              echo "$name: configured"
+            fi
+          done
+          if [[ "$missing" -ne 0 ]]; then exit 1; fi
+          if [[ "${#BACKUP_ENCRYPTION_PASSPHRASE}" -lt 24 ]]; then
+            echo "::error::Backup encryption passphrase is shorter than required minimum"
+            exit 1
+          fi
+          echo "All three secret names are configured and backup passphrase length gate passed"
+          echo "No secret value was printed; no database/Storage request or backup was performed"
+
+  connection-readiness:
+    needs: preflight
+    if: needs.preflight.outputs.mode == 'connection-check'
+    runs-on: ubuntu-latest
+    timeout-minutes: 7
+    steps:
+      - name: Check read-only PostgreSQL connection without exposing credentials
+        env:
+          DATABASE_URL: ${{ secrets.BACKUP_DATABASE_URL }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          set +x
+          test -n "$DATABASE_URL" || { echo "::error::Database secret missing"; exit 1; }
+          if ! docker run --rm --network host -e DATABASE_URL postgres:17 \
+            sh -ec 'pg_dump --dbname="$DATABASE_URL" --schema-only --no-owner --no-acl --schema=public --file=/dev/null >/dev/null 2>&1'; then
+            echo "::error::PostgreSQL connection or read privilege failed; check pooler URI, password and permissions in GitHub Settings"
+            exit 1
+          fi
+          echo "PostgreSQL read-only schema export succeeded; no dump artifact created"
+
+      - name: Check private Storage listing without downloading objects
+        env:
+          SUPABASE_STORAGE_KEY: ${{ secrets.BACKUP_STORAGE_SERVICE_ROLE_KEY }}
+          SUPABASE_URL: https://mmbhuxiejfqipttyujop.supabase.co
+        shell: bash
+        run: |
+          set -euo pipefail
+          set +x
+          python3 - <<'PY'
+          import json, os, sys
+          from urllib.error import HTTPError, URLError
+          from urllib.request import Request, urlopen
+          key = os.getenv("SUPABASE_STORAGE_KEY", "")
+          if not key:
+              sys.exit("Missing Storage credential")
+          url = os.environ["SUPABASE_URL"] + "/storage/v1/object/list/link-in-bio-media"
+          request = Request(url, data=b'{"prefix":"","limit":1}', method="POST", headers={
+              "apikey": key, "Authorization": "Bearer " + key, "Content-Type": "application/json"
+          })
+          try:
+              with urlopen(request, timeout=30) as response:
+                  result = json.load(response)
+          except HTTPError as exc:
+              sys.exit("Storage list permission or key failure; HTTP " + str(exc.code))
+          except (URLError, ValueError, TimeoutError):
+              sys.exit("Storage list connection or response failure")
+          if not isinstance(result, list):
+              sys.exit("Unexpected Storage list response")
+          print("Private Storage read-only listing succeeded; no object bytes downloaded")
+          PY
+
+  backup:
+    needs: preflight
+    if: needs.preflight.outputs.mode == 'live' && github.event.repository.private == true
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Require protected backup secrets
+        env:
+          DATABASE_URL: ${{ secrets.BACKUP_DATABASE_URL }}
+          SERVICE_KEY: ${{ secrets.BACKUP_STORAGE_SERVICE_ROLE_KEY }}
+          ENCRYPTION_PASSPHRASE: ${{ secrets.BACKUP_ENCRYPTION_PASSPHRASE }}
+        run: |
+          set -eu
+          test -n "$DATABASE_URL" || { echo "Missing BACKUP_DATABASE_URL"; exit 1; }
+          test -n "$SERVICE_KEY" || { echo "Missing BACKUP_STORAGE_SERVICE_ROLE_KEY"; exit 1; }
+          test -n "$ENCRYPTION_PASSPHRASE" || { echo "Missing BACKUP_ENCRYPTION_PASSPHRASE"; exit 1; }
+          test "${#ENCRYPTION_PASSPHRASE}" -ge 24 || { echo "Backup passphrase too short"; exit 1; }
+
+      - name: Dump database using matching PostgreSQL version
+        env:
+          DATABASE_URL: ${{ secrets.BACKUP_DATABASE_URL }}
+        run: |
+          set -euo pipefail
+          umask 077
+          mkdir -p backup/media
+          docker run --rm --network host -e DATABASE_URL \
+            -v "$PWD/backup:/work" postgres:17 \
+            sh -ec 'pg_dump --dbname="$DATABASE_URL" --format=custom --no-owner --no-acl --schema=public --schema=auth --schema=storage --file=/work/database.dump'
+          test -s backup/database.dump
+
+      - name: Download private Storage objects and manifest
+        env:
+          SUPABASE_URL: https://mmbhuxiejfqipttyujop.supabase.co
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.BACKUP_STORAGE_SERVICE_ROLE_KEY }}
+          BACKUP_MEDIA_DIR: backup/media
+          BACKUP_MANIFEST_PATH: backup/media-manifest.json
+        run: |
+          set -euo pipefail
+          umask 077
+          python3 scripts/backup_storage.py
+
+      - name: Stage schema migrations for integrity validation
+        run: cp -R supabase/migrations backup/schema-migrations
+
+      - name: Validate database catalog and media integrity before encryption
+        run: |
+          set -euo pipefail
+          docker run --rm -v "$PWD/backup:/work:ro" postgres:17 \
+            pg_restore --list /work/database.dump > /dev/null
+          python3 scripts/verify_backup.py
+
+      - name: Archive and encrypt before uploading anywhere
+        env:
+          BACKUP_ENCRYPTION_PASSPHRASE: ${{ secrets.BACKUP_ENCRYPTION_PASSPHRASE }}
+        run: |
+          set -euo pipefail
+          umask 077
+          date -u +%Y-%m-%dT%H:%M:%SZ > backup/created-at-utc.txt
+          sha256sum backup/database.dump backup/media-manifest.json > backup/sha256-manifest.txt
+          tar czf /tmp/link-in-bio-backup.tar.gz -C backup .
+          gpg --batch --yes --pinentry-mode loopback --symmetric \
+            --cipher-algo AES256 --s2k-digest-algo SHA256 --s2k-mode 3 \
+            --output link-in-bio-backup.tar.gz.gpg \
+            --passphrase-fd 3 /tmp/link-in-bio-backup.tar.gz \
+            3<<<"$BACKUP_ENCRYPTION_PASSPHRASE"
+          test -s link-in-bio-backup.tar.gz.gpg
+          gpg --batch --yes --pinentry-mode loopback --decrypt \
+            --passphrase-fd 3 link-in-bio-backup.tar.gz.gpg \
+            3<<<"$BACKUP_ENCRYPTION_PASSPHRASE" | tar tzf - > /dev/null
+          shred -u /tmp/link-in-bio-backup.tar.gz || rm -f /tmp/link-in-bio-backup.tar.gz
+          rm -rf backup
+
+      - name: Upload encrypted archive only
+        uses: actions/upload-artifact@v4
+        with:
+          name: link-in-bio-encrypted-backup-${{ github.run_number }}
+          path: link-in-bio-backup.tar.gz.gpg
+          if-no-files-found: error
+          retention-days: 35
+          compression-level: 0
+
+      - name: Always remove plaintext staging, temporary archive and encrypted local file
+        if: always()
+        run: |
+          set -euo pipefail
+          if [ -f /tmp/link-in-bio-backup.tar.gz ]; then
+            shred -u /tmp/link-in-bio-backup.tar.gz || rm -f /tmp/link-in-bio-backup.tar.gz
+          fi
+          rm -rf backup
+          rm -f link-in-bio-backup.tar.gz.gpg

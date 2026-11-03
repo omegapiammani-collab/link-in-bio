@@ -1,0 +1,116 @@
+# Phase 1 Final Acceptance Gates — 3 November 2026
+
+**Current decision: NOT READY TO CLOSE. Do not merge `feature/phase-1-foundation` into application `main`, switch to production, buy a tier, or restore into the live Supabase project.**
+
+## Confirmed by automated tests
+
+1. **Owner vs non-Owner Admin:** owner Google login previously succeeded; a separate real Google login reached `/login?error=unauthorized`, the callback route's explicit post-OAuth, post-`getUser` non-Owner signout. Auth logs corroborated a successful login at 15:50 UTC on 3 Nov. These validate the Admin gate, not the Storage HTTP API.
+2. **RLS:** all nine application tables have RLS. Four private-media object policies require Owner authorization for SELECT/INSERT/UPDATE/DELETE. A read-only synthetic JWT-sub test with authenticated role returned `app_private.is_owner()=false` and zero visible Owner mapping.
+3. **Backup:** private encrypted artifact `link-in-bio-encrypted-backup-7`, ID `13238095372`, generated in private [Actions #41649973610](https://github.com/omegapiammani-collab/link-in-bio-backups/actions/runs/41649973610). Expires 8 December 2026. Decrypt, checksums and all nine public tables/data/RLS isolated restore passed in private [Actions #41664320484](https://github.com/omegapiammani-collab/link-in-bio-backups/actions/runs/41664320484).
+4. **Regression CI:** Next/vinext builds, offline fixture restore, and RLS checks have passing prior GitHub Actions runs.
+
+## Hard blockers to final acceptance
+
+### A. Storage HTTP end-to-end with a non-Owner identity
+
+The Preview deliberately signs non-Owners out after OAuth, so Admin denial is **not** evidence that the private Storage REST API itself rejects that authenticated user. The private bucket currently has **zero objects**, so empty LIST results are insufficient to demonstrate that read/download is denied.
+
+**Pass criteria:** With a real authenticated non-Owner JWT obtained in an authorized test context (never paste token into chat, source code, PR, or logs), confirm forbidden LIST of a known private object, forbidden DOWNLOAD for that exact known object, forbidden INSERT and UPDATE. Verify Owner can retrieve the same known object. The object should be a tiny disposable fixture (not personal data), created through the approved Owner workflow and removed after tests, after a newly encrypted backup proves it contains nonzero media bytes.
+
+**Guardrail:** Do not modify production OAuth callback merely to make a non-Owner Storage token available; instead use a separate isolated Supabase test environment and test accounts, or a private, short-lived authorized test harness that never exposes JWTs. Do not use service-role keys for negative tests because they bypass RLS.
+
+### B. Full Supabase-compatible Auth/Storage restore
+
+An earlier isolated plain PostgreSQL 17 restore of actual `auth` and `storage` schemas failed during pre-data: missing Supabase-managed prerequisite roles, types, extensions/functions. This is a **documented failed acceptance**, not a passed restore. The public app's nine tables restored with *synthetic Auth stubs*, which do not prove Auth data, OAuth configuration, sessions, Storage service, policies, or object bytes.
+
+**Pass criteria:** Use an isolated, version-compatible **Supabase local Docker stack** (not the live Supabase project), decrypt the archived data without exposing it in CI output, restore the compatible database schema/data and dependencies, confirm Auth record references, all nine app tables/RLS, bucket metadata/policies and genuine media object bytes via Storage API. Exercise Admin and non-Owner behaviors on the isolated stack. Supabase managed OAuth provider settings/secrets must be separately configured; the database dump alone cannot restore those. Record checksums/counts only, not identities or file contents.
+
+**Reference docs:** 
+- https://supabase.com/docs/guides/local-development/cli/getting-started
+- https://supabase.com/docs/guides/self-hosting/restore-from-platform
+
+**Guardrail:** Supabase CLI's managed-to-self-hosted guidance recommends portable roles/schema/data dumps; raw `pg_dump` of managed `auth` and `storage` includes internal dependencies and may not be directly portable. Do not silently replace the first verified encrypted archive; retain it and test a reviewed, independently encrypted portable export on the private runner if needed. No new paid Supabase project or branch.
+
+### C. Independent off-GitHub encrypted copy
+
+Download the stored **encrypted** artifact from private [Actions #41649973610](https://github.com/omegapiammani-collab/link-in-bio-backups/actions/runs/41649973610) using the GitHub UI, extract only `link-in-bio-backup.tar.gz.gpg` from the ZIP, and copy the .gpg file to a separately controlled secure local/encrypted volume or private cloud drive **outside GitHub**. Keep the existing GPG recovery passphrase in the independent password manager. Do not store plaintext archive, passphrase and encrypted artifact together. Record file hash and an access/recovery test without exposing any secrets.
+
+**Pass criteria:** a verified independent encrypted copy exists and can be decrypted with the independently saved passphrase. Before 8 December 2026.
+
+### D. Provider configuration
+
+Confirm Email Provider persisted disabled in Supabase Dashboard. Do not enable Email signup or rotate Google OAuth credentials merely to close the checklist.
+
+## Completion rule
+
+Phase 1 may be marked **complete** only after A–D have independently documented evidence, the Backup artifact is securely retained, and the final CI remains green. Passing RLS policy SQL checks, a synthetic nonempty media fixture, or a successful Admin denial alone does **not** waive the real Auth/Storage recovery requirement. Until then, PR #1 remains Draft and unmerged.
+
+## User-reported operational steps — 3 November 2026
+
+- [x] **Reported by the user**: downloaded the backup artifact and stored a copy outside GitHub. This is **not independently verified** by a file hash or a separate decryption attempt. The encryption recovery passphrase must remain available independently in the password manager.
+- [x] **Reported by the user**: used the Google Owner account to run the Admin Storage smoke test. **Pass/fail output was not provided**, and the test deletes the temporary file after upload/download, so this report cannot be used as evidence of a nonempty *archived* Storage backup.
+- [ ] **Off-GitHub verification**: confirm the offsite copy contains the original `link-in-bio-backup.tar.gz.gpg` (not just an empty ZIP or shortcut), verify SHA-256 against the extracted artifact, and perform one local decrypt/list test without logging or sharing the passphrase.
+- [x] **Owner Storage end-to-end PASS (user-observed, 3 Nov 2026):** user explicitly confirmed the Preview Admin smoke test completed all four steps: upload, download, byte-for-byte comparison and deletion. This is a genuine Owner UI test reported by the user, not an independently captured HTTP transcript; test fixture was deleted, so **does not** prove a non-empty backup or non-Owner Storage denial.
+- [ ] **True Non-Owner Storage HTTP** and **full Auth/Storage isolate** remain open.
+
+### Local isolation procedure (never run on the live project)
+
+Supabase supports a local Docker stack started with `supabase init` and `supabase start`. The current archive is a custom `pg_dump` of public/auth/storage and is **not identical** to a Supabase CLI-managed portable dump. Do not blindly `pg_restore` every managed schema over the CLI's initialized internal schemas.
+
+A safe manual recovery exercise has the following **gated** order:
+
+1. On a personal workstation or isolated CI host with Docker, create a disposable directory unrelated to the app's repository. Install a **pinned Supabase CLI** version. Inspect `supabase --help` and `supabase db --help` before proceeding.
+2. Run `supabase init` then `supabase start` with a **local-only** project ID and default local credentials. Verify the local API and local Postgres ports; never substitute the live `mmbhuxiejfqipttyujop` URI in any restore command. Do not log in to/link the CLI to the live project.
+3. In an isolated temporary directory, decrypt the **off-GitHub** `.tar.gz.gpg` using the recovery passphrase from the password manager, privately extract `database.dump` and `media-manifest.json`, and verify archive checksums and database catalog. Do not upload decrypted archives or commit them to Git.
+4. Inspect the local Supabase-managed `auth`/`storage` schema and the dump's object list to build an **explicit, reviewed** compatibility plan (roles, extensions, triggers, constraints, versions). Restore only after checking target compatibility; preserve a clean local database snapshot so failed tests are disposable.
+5. Apply `public` application tables/data and RLS in an isolated copy. Restore Auth/Storage only with a version-matched, Supabase-compatible plan. Verify Auth identities and Storage bucket metadata via local SQL **and** local API. External Google OAuth configuration, Google consent screen and JWT secrets are not contained in the database archive.
+6. For media bytes, **never copy the downloaded bytes directly into the self-hosted storage filesystem**: use the supported Storage/S3 API to import them, then download again through the local API and compare SHA-256. Since the currently archived bucket contains 0 objects, perform a separately scoped **synthetic nonempty-media exercise** without replacing the existing verified archive. A test fixture cannot pretend to be a preexisting archived production object.
+7. Run genuine local Owner and non-Owner authorization tests on list/download/insert/update/delete, then remove the disposable local stack and all plaintext files. Record only PASS/FAIL, versions, counts and hashes, not tokens or identities.
+
+**Further evidence required**: a finished local restore log showing Auth/Storage service compatibility, role/RLS checks and actual object-byte recovery. A simple `pg_restore --list` or nine-table-only recovery does not satisfy these gates.
+
+Official documentation:
+- https://supabase.com/docs/guides/local-development/cli/getting-started
+- https://supabase.com/docs/guides/self-hosting/restore-from-platform
+- https://supabase.com/docs/guides/self-hosting/copy-from-platform-s3
+
+### Local encrypted copy verification helper (Owner workstation only)
+
+The repo includes `scripts/verify_offsite_backup.sh` plus a synthetic-only offline test. On a **trusted machine** with `bash`, `gpg`, `tar`, and GNU `sha256sum` installed, inspect the helper script, then run:
+
+```bash
+bash scripts/verify_offsite_backup.sh "/your/private/location/link-in-bio-backup.tar.gz.gpg"
+```
+
+Enter the separately stored GPG recovery passphrase **only when prompted on that local machine**. The helper prints the encrypted file's SHA-256 and tests streaming GPG decryption followed by `tar` archive listing. It **does not** extract plaintext files to disk, upload data, or print archive member names. A wrong passphrase or corrupted archive returns a nonzero exit code. Keep the `.gpg` file and passphrase in separate secure locations. Do not paste the passphrase or plaintext output into chat or GitHub.
+
+**Important:** GitHub's recorded Artifact SHA-256 is a hash of the GitHub artifact container, not automatically the `.gpg` file you extracted from the downloaded ZIP. Do not compare these hashes as if identical. The successful local decrypt/list test proves ciphertext readability, **not** a complete Supabase restore. On macOS, install GNU coreutils for `sha256sum` if unavailable.
+
+## Independent off-GitHub recovery passphrase test — user screenshot, 3 November 2026
+
+- [x] **PASS, user-executed local test.** Windows PowerShell running the feature-branch `scripts/verify_offsite_backup.sh` against a locally stored extracted `link-in-bio-backup.tar.gz.gpg` reported `PASS: Off-GitHub encrypted archive can be decrypted and its tar structure is readable.`
+- [x] Encrypted `.gpg` file SHA-256 shown by the local verification script: `8b5699021034673ae6cd3d1665a467e8387d8534bca4955103d5bd5cfd4dc897`. This checksum refers to the **inner GPG file**, not the GitHub-hosted artifact ZIP/digest. It has not been independently matched against a separately computed inner-GPG hash from GitHub's artifact.
+- [x] Earlier local attempts returned `FAIL`, followed by a successful third local decrypt/list verification. Final successful result is accepted as local passphrase/archive readability evidence, not a full database restore.
+- [ ] Full isolated Supabase-compatible Auth/Storage and actual media recovery remains unverified; non-Owner authenticated Storage HTTP E2E also remains open.
+
+## Cloud-hosted Docker recovery progress — 3 November 2026
+
+The Owner Windows device does not have Docker Desktop. **No local installation is required for the completed isolated database tests**: the PRIVATE backup repository performs them in disposable GitHub-hosted Docker runners using only the already-encrypted backup artifact.
+
+- [x] [Private Actions #41678494214](https://github.com/omegapiammani-collab/link-in-bio-backups/actions/runs/41678494214): encrypted archive integrity, nine public app tables/data/RLS, two-table app smoke and the **actual backed-up `auth.users` table plus nonzero user records** restored independently to disposable PG17; all four runnable jobs PASS.
+- [x] Repeated full managed `auth` + `storage` restore in vanilla PG17 is deliberately **skipped**, following previously documented pre-data failures. It is not marked PASS.
+- [ ] This does **not** restore a functioning Supabase Auth server, Google OAuth provider configuration, Storage service, bucket metadata, file bytes, or Non-Owner Storage API behavior.
+- [ ] The actual archived Storage media count is zero. A synthetic fixture would only prove a separate rehearsal, not that a previously existing media file is in this backup.
+- [ ] Full system acceptance requires a **Supabase-compatible isolated stack** (local Docker Desktop is one option, but a fully disposable CI runner may also host the local Docker stack if sufficient resources/available quotas), with a reviewed portable roles/schema/data export or explicit compatible managed schema restore plan. No new paid Supabase project, no live restore, no CLI connection to the hosted production project.
+
+## GitHub-hosted Supabase Local Stack proof (3 November 2026)
+
+No Docker Desktop installation on the Owner's Windows computer is needed for these completed tests. The PRIVATE backup repository launched isolated PostgreSQL + GoTrue Auth + Storage API using **Supabase CLI 2.81.3** in GitHub Actions:
+
+- [x] [Synthetic Auth + Storage API E2E #41680873457](https://github.com/omegapiammani-collab/link-in-bio-backups/actions/runs/41680873457) **PASS**: two synthetic Auth accounts; local Owner JWT permitted upload/download/byte-compare/delete; local non-Owner JWT denied read/write/list access to a known private fixture. This tests temporary *synthetic* RLS policies, not the live app's Google-account Storage tokens.
+- [x] [Real encrypted backup import #41682180551](https://github.com/omegapiammani-collab/link-in-bio-backups/actions/runs/41682180551) **PASS for bounded recovery**: actual backed-up `auth.users` data imported into an initialized Supabase Auth schema and was readable via its Auth admin API. Real private `storage.buckets` metadata (`id`, `name`, `public`) was imported through a **restricted projection** after the full-table COPY proved incompatible, and the local Storage API verified it was private.
+- [ ] The real backup **has not** been fully restored to a working Supabase project. Complete Auth identities, Google OAuth configuration and end-user session recovery, all Storage-managed metadata and policies, live-app RLS, and byte restoration of genuine media (archived zero files) are not proven.
+- [ ] For Phase 1 final acceptance, perform a combined environment migration of all nine app tables plus Auth/Storage data with compatible schemas, then check end-to-end Auth and Owner/Non-Owner APIs; use a separately created nonempty fixture to test the media-byte import process. Do not substitute individual table/copy-projection passes for full recovery.
+- [x] No paid project, live Supabase connection, public unencrypted artifact, source-main merge or production rollout.
+
+Private evidence and scope: [backup vault README](https://github.com/omegapiammani-collab/link-in-bio-backups/blob/main/README.md).
