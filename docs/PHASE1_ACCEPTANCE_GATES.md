@@ -92,3 +92,13 @@ Enter the separately stored GPG recovery passphrase **only when prompted on that
 - [x] Encrypted `.gpg` file SHA-256 shown by the local verification script: `8b5699021034673ae6cd3d1665a467e8387d8534bca4955103d5bd5cfd4dc897`. This checksum refers to the **inner GPG file**, not the GitHub-hosted artifact ZIP/digest. It has not been independently matched against a separately computed inner-GPG hash from GitHub's artifact.
 - [x] Earlier local attempts returned `FAIL`, followed by a successful third local decrypt/list verification. Final successful result is accepted as local passphrase/archive readability evidence, not a full database restore.
 - [ ] Full isolated Supabase-compatible Auth/Storage and actual media recovery remains unverified; non-Owner authenticated Storage HTTP E2E also remains open.
+
+## Cloud-hosted Docker recovery progress — 3 November 2026
+
+The Owner Windows device does not have Docker Desktop. **No local installation is required for the completed isolated database tests**: the PRIVATE backup repository performs them in disposable GitHub-hosted Docker runners using only the already-encrypted backup artifact.
+
+- [x] [Private Actions #41678494214](https://github.com/omegapiammani-collab/link-in-bio-backups/actions/runs/41678494214): encrypted archive integrity, nine public app tables/data/RLS, two-table app smoke and the **actual backed-up `auth.users` table plus nonzero user records** restored independently to disposable PG17; all four runnable jobs PASS.
+- [x] Repeated full managed `auth` + `storage` restore in vanilla PG17 is deliberately **skipped**, following previously documented pre-data failures. It is not marked PASS.
+- [ ] This does **not** restore a functioning Supabase Auth server, Google OAuth provider configuration, Storage service, bucket metadata, file bytes, or Non-Owner Storage API behavior.
+- [ ] The actual archived Storage media count is zero. A synthetic fixture would only prove a separate rehearsal, not that a previously existing media file is in this backup.
+- [ ] Full system acceptance requires a **Supabase-compatible isolated stack** (local Docker Desktop is one option, but a fully disposable CI runner may also host the local Docker stack if sufficient resources/available quotas), with a reviewed portable roles/schema/data export or explicit compatible managed schema restore plan. No new paid Supabase project, no live restore, no CLI connection to the hosted production project.
