@@ -106,3 +106,11 @@
 - [ ] Manual encrypted backup run and **separate isolated restore drill** remain untested and cannot be represented as complete.
 - [ ] Real non-Owner Google session and deny-access regression remain untested; no second Google account was requested or changed.
 - [ ] Confirm new CI run and Cloudflare builds before merging; leave PR as Draft and keep Production disabled.
+
+## Encrypted recovery rehearsal — 3 November 2026
+- [x] Google-only Owner login/logout remained successful after the user disabled Email Provider.
+- [x] Isolated local PostgreSQL 17 recovery rehearsal passed in GitHub Actions run #95: fixture table, custom-format pg_dump, nested media bytes, AES-256 encrypted archive, decryption, restore to a separate fixture database, database row equality and media-byte equality.
+- [x] Test data and encryption password are **fake CI fixtures only**; no Supabase project secrets or production user records were accessed.
+- [ ] Real encrypted off-Supabase backup and real recovery into an isolated Supabase-compatible environment remain outstanding. Do not count the fixture rehearsal as production backup evidence.
+- [ ] Real non-Owner Google OAuth sign-in denial still outstanding; only simulated RLS denial has been independently tested.
+- [ ] Re-run full CI on latest branch before merge and leave Draft PR open until the actual backup/recovery sign-off.
