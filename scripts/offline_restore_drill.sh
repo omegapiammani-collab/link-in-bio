@@ -60,7 +60,7 @@ BACKUP_DIR="$work/restored" python3 "$root/scripts/verify_backup.py"
 docker run --rm --network host -e PGPASSWORD=ci-only-local-password \
   -v "$work/restored:/work:ro" postgres:17 pg_restore \
   -h 127.0.0.1 -U postgres -d phase1_fixture_restored \
-  --exit-on-error --no-owner --no-acl /work/database.dump
+  --exit-on-error --clean --if-exists --no-owner --no-acl /work/database.dump
 
 count=$("${pg[@]}" psql -h 127.0.0.1 -U postgres \
   -d phase1_fixture_restored -At -v ON_ERROR_STOP=1 \
