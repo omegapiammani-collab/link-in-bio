@@ -166,3 +166,12 @@
 - [x] Updated Login page on the feature branch to show a clear Thai provider-failure message, distinct from an Owner-only rejection; displays **allowlisted error categories only**, never raw `error_description`, OAuth codes, tokens or emails.
 - [ ] Test the second Google account again using a new browser session, only after successful OAuth exchange. Expected Owner denial is an explicit `/login?error=unauthorized` from the application, **not** `server_error` / `unexpected_failure`.
 - [ ] If repeatable: review Supabase Google provider Client ID/Secret pairing, Google's exact authorized redirect URI `https://mmbhuxiejfqipttyujop.supabase.co/auth/v1/callback`, and Google auth provider availability. Do not paste credentials into tickets or chat; do not rotate keys without user approval.
+
+## Second Google account successful Owner-denial retest — 3 November 2026, 22:50 ICT
+
+- [x] The user reattempted Google login with the second, non-Owner account and obtained **`/login?error=unauthorized`** from Cloudflare Workers Preview.
+- [x] The application OAuth callback route was reviewed: it calls `exchangeCodeForSession`, then `getUser`; if the authenticated user's UUID does not match the configured Owner UUID, it signs out and redirects to `/login?error=unauthorized`. The earlier upstream error would instead appear as `server_error` / `unexpected_failure`.
+- [x] Read-only Supabase `auth_logs` at **2026-11-03 15:50:03–15:50:05 UTC** recorded a new Google provider redirect, a `Login` event and successful HTTP responses. These corroborate OAuth completion. The actual browser redirect is user-reported rather than independently captured as an HTTP trace.
+- [x] **Phase 1 Non-Owner Admin authorization acceptance PASS (user-observed with Auth-log corroboration).** The previous failed OAuth attempt at 15:44:51 UTC remains documented as a distinct transient upstream issue and does not invalidate this successful retry.
+- [ ] Non-Owner direct private Storage list/download/upload tests remain outstanding; Admin denial cannot establish separate Storage API authorization.
+- [ ] Full isolated Supabase-compatible Auth/Storage backup restore, non-empty media restoration and independent off-GitHub encrypted artifact copy remain outstanding. Phase 1 is not fully closed.
