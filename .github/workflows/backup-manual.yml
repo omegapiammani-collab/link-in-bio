@@ -36,7 +36,7 @@ jobs:
           else
             test -f ops/backup-request.txt
             mode="$(sed -n 's/^mode=//p' ops/backup-request.txt)"
-            [[ "$mode" == "preflight" || "$mode" == "live" ]] || { echo "Invalid request mode"; exit 1; }
+            [[ "$mode" == "preflight" || "$mode" == "secret-check" || "$mode" == "live" ]] || { echo "Invalid request mode"; exit 1; }
             test "$(grep -c '^mode=' ops/backup-request.txt)" -eq 1
           fi
           if [[ "$mode" == "preflight" ]]; then
@@ -45,9 +45,41 @@ jobs:
             python3 -m py_compile scripts/backup_storage.py scripts/verify_backup.py
             echo "Feature-branch backup preflight PASSED; no secrets read; no backup requested"
           else
-            echo "Explicit live backup request accepted; backup steps require protected GitHub secrets"
+            echo "Explicit $mode request accepted; secret-bearing jobs require configured GitHub secrets"
           fi
           echo "mode=$mode" >> "$GITHUB_OUTPUT"
+
+  secret-readiness:
+    needs: preflight
+    if: needs.preflight.outputs.mode == 'secret-check'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Check required secrets without printing values or contacting Supabase
+        env:
+          BACKUP_DATABASE_URL: ${{ secrets.BACKUP_DATABASE_URL }}
+          BACKUP_STORAGE_SERVICE_ROLE_KEY: ${{ secrets.BACKUP_STORAGE_SERVICE_ROLE_KEY }}
+          BACKUP_ENCRYPTION_PASSPHRASE: ${{ secrets.BACKUP_ENCRYPTION_PASSPHRASE }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          set +x
+          missing=0
+          for name in BACKUP_DATABASE_URL BACKUP_STORAGE_SERVICE_ROLE_KEY BACKUP_ENCRYPTION_PASSPHRASE; do
+            if [[ -z "${!name}" ]]; then
+              echo "::error::Missing required repository secret: $name"
+              missing=1
+            else
+              echo "$name: configured"
+            fi
+          done
+          if [[ "$missing" -ne 0 ]]; then exit 1; fi
+          if [[ "${#BACKUP_ENCRYPTION_PASSPHRASE}" -lt 24 ]]; then
+            echo "::error::Backup encryption passphrase is shorter than required minimum"
+            exit 1
+          fi
+          echo "All three secret names are configured and backup passphrase length gate passed"
+          echo "No secret value was printed; no database/Storage request or backup was performed"
 
   backup:
     needs: preflight
