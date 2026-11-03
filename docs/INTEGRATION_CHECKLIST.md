@@ -151,10 +151,18 @@
 
 ## Non-Owner Google OAuth acceptance — user observation (3 November 2026)
 
-- [x] **User-observed**: after signing in to Cloudflare Workers Free Preview with a **second Google account** (not the Owner account), access to `/admin` was denied / the UI reported insufficient privileges. This is a real browser acceptance observation reported directly by the user; it is **not** an independently inspected OAuth session or browser trace. Do not treat it as proof that all private Storage APIs were denied.
+- [ ] **Second Google non-Owner authorization test is NOT yet valid**. The user initially reported Admin denial, but the subsequent screenshot shows a Supabase OAuth provider failure (`error=server_error`, `error_code=unexpected_failure`) **before a session was established**. Supabase Auth logs at **2026-11-03 15:44:51 UTC** confirmed the provider token exchange failed with HTTP **504**. Do not count that failure as an Owner authorization check.
 - [ ] Save a redacted screenshot/status code (no cookies/tokens/email addresses) or review independent server evidence if needed before declaring the Non-Owner flow independently verified.
 - [ ] Test non-Owner Storage object list, download, upload and private media API permissions in a genuine second-account session; SQL-based policy checks are already complete but do not replace this end-to-end acceptance.
 - [ ] Verify complete isolated Supabase Auth/Storage restore and actual file-byte reinjection in an isolated compatible environment. The isolated public-table restore with synthetic Auth stubs passed, but this is NOT the same as restoring Auth/OAuth or private media.
 - [ ] Download/store an encrypted off-GitHub artifact copy, separate from the passphrase, before 8 December 2026. User has not confirmed this.
 - [ ] Confirm Email Provider persisted disabled independently without enabling any password auth.
 - [x] Phase 1 remains Draft and unmerged; no paid tier or production rollout approved.
+
+## Second-account OAuth callback investigation — 3 November 2026
+
+- [x] Screenshot: login page URL contains `error=server_error&error_code=unexpected_failure` and the provider exchange error category; user was **not authenticated**. The full callback URL and authorization code were not logged into GitHub.
+- [x] Read-only Supabase Auth logs at **15:44:51 UTC** show a **504 timeout** and `Unable to exchange external code` category. This is upstream OAuth token exchange, not an App `unauthorized` redirect. The underlying cause (transient provider/network issue versus OAuth credentials) is not confirmed.
+- [x] Updated Login page on the feature branch to show a clear Thai provider-failure message, distinct from an Owner-only rejection; displays **allowlisted error categories only**, never raw `error_description`, OAuth codes, tokens or emails.
+- [ ] Test the second Google account again using a new browser session, only after successful OAuth exchange. Expected Owner denial is an explicit `/login?error=unauthorized` from the application, **not** `server_error` / `unexpected_failure`.
+- [ ] If repeatable: review Supabase Google provider Client ID/Secret pairing, Google's exact authorized redirect URI `https://mmbhuxiejfqipttyujop.supabase.co/auth/v1/callback`, and Google auth provider availability. Do not paste credentials into tickets or chat; do not rotate keys without user approval.
