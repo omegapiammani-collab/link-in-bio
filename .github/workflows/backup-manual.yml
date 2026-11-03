@@ -1,14 +1,57 @@
 name: Encrypted Backup (manual only - setup required)
 on:
   workflow_dispatch:
+  push:
+    branches:
+      - feature/phase-1-foundation
+    paths:
+      - ops/backup-request.txt
 
-# This workflow will be runnable only after review/merge into the default branch,
-# and only after the required secrets have been added in GitHub settings.
+# A push to the request file can exercise a no-secret preflight on the feature
+# branch. Only an explicit request mode=live invokes the encrypted backup job.
+# workflow_dispatch remains unavailable until this workflow exists on default.
 permissions:
   contents: read
 
 jobs:
+  preflight:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      mode: ${{ steps.request.outputs.mode }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify isolated feature-branch request and toolchain (no secrets)
+        id: request
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REF" = "refs/heads/feature/phase-1-foundation"
+          test -f .github/workflows/backup-manual.yml
+          test -f scripts/backup_storage.py
+          test -f scripts/verify_backup.py
+          test -d supabase/migrations
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            mode="live"
+          else
+            test -f ops/backup-request.txt
+            mode="$(sed -n 's/^mode=//p' ops/backup-request.txt)"
+            [[ "$mode" == "preflight" || "$mode" == "live" ]] || { echo "Invalid request mode"; exit 1; }
+            test "$(grep -c '^mode=' ops/backup-request.txt)" -eq 1
+          fi
+          if [[ "$mode" == "preflight" ]]; then
+            command -v gpg >/dev/null
+            command -v docker >/dev/null
+            python3 -m py_compile scripts/backup_storage.py scripts/verify_backup.py
+            echo "Feature-branch backup preflight PASSED; no secrets read; no backup requested"
+          else
+            echo "Explicit live backup request accepted; backup steps require protected GitHub secrets"
+          fi
+          echo "mode=$mode" >> "$GITHUB_OUTPUT"
+
   backup:
+    needs: preflight
+    if: needs.preflight.outputs.mode == 'live'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
