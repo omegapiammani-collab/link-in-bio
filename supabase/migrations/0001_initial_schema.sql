@@ -8,11 +8,15 @@ create table public.owner_config (
   created_at timestamptz not null default now()
 );
 
-create or replace function public.is_owner() returns boolean
+-- Internal, unexposed schema for privileged ownership lookup.
+create schema if not exists app_private;
+revoke all on schema app_private from public;
+grant usage on schema app_private to authenticated;
+create or replace function app_private.is_owner() returns boolean
 language sql stable security definer set search_path = ''
-as $$ select exists(select 1 from public.owner_config where auth_user_id=(select auth.uid())); $$;
-revoke all on function public.is_owner() from public;
-grant execute on function public.is_owner() to authenticated;
+as $ select exists(select 1 from public.owner_config where auth_user_id=(select auth.uid())); $;
+revoke all on function app_private.is_owner() from public, anon, authenticated;
+grant execute on function app_private.is_owner() to authenticated;
 
 create table public.pages (
  id uuid primary key default gen_random_uuid(),
@@ -101,21 +105,21 @@ do $$ declare t text; begin
   execute format('alter table public.%I enable row level security',t);
   execute format('revoke all on public.%I from anon,authenticated',t);
   execute format('grant select,insert,update,delete on public.%I to authenticated',t);
-  execute format('create policy owner_only on public.%I for all to authenticated using ((select public.is_owner())) with check ((select public.is_owner()))',t);
+  execute format('create policy owner_only on public.%I for all to authenticated using ((select app_private.is_owner())) with check ((select app_private.is_owner()))',t);
  end loop;
 end $$;
 drop policy owner_only on public.owner_config;
-create policy owner_config_read on public.owner_config for select to authenticated using ((select public.is_owner()));
+create policy owner_config_read on public.owner_config for select to authenticated using ((select app_private.is_owner()));
 revoke insert,update,delete on public.owner_config from authenticated;
 
 drop policy owner_only on public.page_versions;
-create policy page_versions_owner_select on public.page_versions for select to authenticated using ((select public.is_owner()));
-create policy page_versions_owner_insert on public.page_versions for insert to authenticated with check ((select public.is_owner()));
+create policy page_versions_owner_select on public.page_versions for select to authenticated using ((select app_private.is_owner()));
+create policy page_versions_owner_insert on public.page_versions for insert to authenticated with check ((select app_private.is_owner()));
 revoke update,delete on public.page_versions from authenticated;
 
 drop policy owner_only on public.audit_events;
-create policy audit_owner_read on public.audit_events for select to authenticated using ((select public.is_owner()));
-create policy audit_owner_insert on public.audit_events for insert to authenticated with check ((select public.is_owner()));
+create policy audit_owner_read on public.audit_events for select to authenticated using ((select app_private.is_owner()));
+create policy audit_owner_insert on public.audit_events for insert to authenticated with check ((select app_private.is_owner()));
 revoke update,delete on public.audit_events from authenticated;
 grant usage,select on sequence public.audit_events_id_seq to authenticated;
 
