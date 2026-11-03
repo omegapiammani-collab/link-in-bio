@@ -55,3 +55,11 @@ Note: Postgres dumps that include managed `auth` and `storage` schemas may requi
 - `scripts/verify_backup.py` separately checks the custom archive header, schema migration files, every media path, file size, SHA-256 hash, duplicate entries and files omitted from the media manifest before the archive is encrypted.
 - Offline unit tests in `tests/test_verify_backup.py` cover valid input, tampered media, undeclared media and duplicate manifest records. All tests use mock fixtures and never connect to the live project.
 - This is **archive integrity verification**, not successful restoration: the first encrypted database and media backup and isolated restore drill are still required. The manual workflow remains disabled until protected secrets are configured and the workflow is approved on the default branch.
+
+## Isolated recovery rehearsal (no Supabase data) — 3 November 2026
+- [x] Added `scripts/offline_restore_drill.sh` and a dedicated `offline-restore-drill` GitHub Actions job with an isolated PostgreSQL 17 service.
+- [x] The job creates a disposable fixture database, a sample Link-in-Bio page record and nested sample media bytes, exports a custom-format dump and SHA-256 manifest, validates both, creates a GPG AES-256 encrypted archive, deletes the original plaintext staging directory, decrypts to an isolated directory and restores the database into a **second, separate** PostgreSQL 17 database.
+- [x] It checks the restored database row exactly matches the original fixture and compares the restored media bytes to the original. GitHub Actions run #95 reported `offline-restore-drill` success.
+- [ ] **This is an offline simulated restore, not a real Supabase restore.** A production-like restore of an actual encrypted archive including Supabase Auth/Storage schemas and actual file bytes is still pending.
+- [ ] The `backup-manual.yml` workflow remains manual and disabled until protected credentials and off-site retention are configured.
+- [ ] Full disaster recovery must also test application RLS, OAuth reconfiguration, Storage APIs and file-byte re-import into an isolated target before Phase 1 can be signed off.
