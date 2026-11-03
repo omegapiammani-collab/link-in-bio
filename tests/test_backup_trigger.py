@@ -23,6 +23,11 @@ class BackupBranchTriggerTests(unittest.TestCase):
         self.assertIn("needs: preflight", self.workflow)
         self.assertIn("if: needs.preflight.outputs.mode == 'live'", self.workflow)
 
+    def test_live_backup_blocked_on_public_repository(self):
+        self.assertIn('github.event.repository.private', self.workflow)
+        self.assertIn('Live backup blocked: this repository is public', self.workflow)
+        self.assertIn("if: needs.preflight.outputs.mode == 'live' && github.event.repository.private == true", self.workflow)
+
     def test_preflight_does_not_use_backup_secrets(self):
         start = self.workflow.index("  preflight:")
         end = self.workflow.index("\n  secret-readiness:", start)
