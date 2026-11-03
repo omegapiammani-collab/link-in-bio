@@ -13,9 +13,9 @@
 - [x] User reported creating Google OAuth web client in Google Cloud Console; use the **Supabase callback URL** from the Supabase Google provider settings as an Authorized Redirect URI.
 - [x] User reported entering OAuth client ID/secret in Supabase > Authentication > Providers > Google. Never paste secrets into ChatGPT or repository.
 - [ ] Set Supabase Site URL and allow `http://localhost:3000/auth/callback` during local testing; later add only the exact Cloudflare preview/production origin.
-- [ ] Sign in using the intended Google account to create `auth.users`.
-- [ ] Read the new User UUID from Supabase Auth dashboard, then bootstrap `owner_config` via privileged SQL and match `OWNER_AUTH_USER_ID` server-only setting.
-- [ ] Confirm Owner permitted, non-Owner and signed-out access blocked; test callback, cookie, logout.
+- [x] Google OAuth sign-in created exactly one Supabase Auth user and Google identity on 3 November 2026.
+- [x] Bootstrapped the unique Google identity as the sole `owner_config` row using privileged SQL and configured `OWNER_AUTH_USER_ID` as a Cloudflare runtime secret; UUID is not committed to Git.
+- [x] Simulated authenticated Owner: `app_private.is_owner()` returns true. Simulated non-Owner: returns false.\n- [ ] Confirm Google OAuth callback session cookies, actual `/admin` access, sign-out, and protected access in a real browser.
 
 ## Live RLS negative authorization test — verified 3 November 2026
 - [x] In a transaction, simulated an `authenticated` role bearing a non-Owner UUID. `app_private.is_owner()` returned false.
@@ -39,3 +39,9 @@
 - Database migrations are **already applied** to the connected Supabase project. Do not blindly reapply them.
 - No paid project, storage product, or deployment was enabled.
 - Do not send password, access token, client secret, or service-role key in chat.
+
+## Google Owner bootstrap verification — 3 November 2026
+- One Auth user, one Google identity, exactly one owner row; positive and negative RLS simulations passed.
+- Cloudflare Worker `link-in-bio-preview` deployed from the feature branch; its runtime Owner UUID is set as an encrypted secret binding.
+- Next step: use the Google sign-in button again and verify the protected Admin screen in the browser. Do not call Phase 1 complete until cookie persistence and logout are tested.
+- Supabase Advisor currently warns about leaked-password protection being off. This app uses Google-only login; review the setting if password sign-in is enabled.
