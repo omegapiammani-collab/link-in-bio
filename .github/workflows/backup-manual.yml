@@ -45,6 +45,9 @@ jobs:
           BACKUP_MANIFEST_PATH: backup/media-manifest.json
         run: python3 scripts/backup_storage.py
 
+      - name: Stage schema migrations for integrity validation
+        run: cp -R supabase/migrations backup/schema-migrations
+
       - name: Validate database catalog and media integrity before encryption
         run: |
           set -euo pipefail
@@ -58,7 +61,6 @@ jobs:
         run: |
           set -euo pipefail
           umask 077
-          cp -R supabase/migrations backup/schema-migrations
           date -u +%Y-%m-%dT%H:%M:%SZ > backup/created-at-utc.txt
           sha256sum backup/database.dump backup/media-manifest.json > backup/sha256-manifest.txt
           tar czf /tmp/link-in-bio-backup.tar.gz -C backup .
