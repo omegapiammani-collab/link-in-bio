@@ -32,3 +32,20 @@
 - `backup_manifests` is Owner-readable only; Owner clients cannot forge a `verified_at` or backup record.
 - Media bucket is private with Owner-only RLS; only JPEG/PNG/WebP/GIF files up to 5 MiB are accepted.
 - Data are still at risk until independent off-site copies and a successful restore test exist.
+
+## Implemented staging workflow — 3 November 2026
+
+- A **manual, disabled-until-configured** GitHub Actions workflow now exists at `.github/workflows/backup-manual.yml`. No schedule is enabled, and no real backup has yet been made.
+- The workflow refuses to run unless three GitHub Actions repository secrets have been securely configured **in GitHub Settings only**:
+  1. `BACKUP_DATABASE_URL`: trusted PostgreSQL connection URL for the managed Supabase project, ideally with restricted backup permissions.
+  2. `BACKUP_STORAGE_SERVICE_ROLE_KEY`: dedicated credential for downloading the private Storage objects. This credential grants broad privileges and must never be placed in GitHub source or messages. Use only the repository's protected Actions secret store.
+  3. `BACKUP_ENCRYPTION_PASSPHRASE`: a strong unique encryption passphrase of at least 24 characters; save it independently offline because the backups cannot be restored without it.
+- The workflow uses a Postgres 17 client to export `public`, `auth`, and `storage` schemas and data; separately downloads **actual** private Storage file bytes, recursively and with a SHA-256 manifest.
+- It wraps schema migrations, database dump, media bytes, and checksums into a symmetric AES-256 GPG archive. The job checks decryption/tar integrity before publishing only the encrypted artifact, with retention 35 days.
+- A private destination and four independently verified retained sets are **not yet established**. GitHub Actions artifacts in a public repository must be treated as accessible to authorized repository collaborators and protected by encryption. Do not place unencrypted backups in artifacts.
+- `scripts/backup_storage.py` includes safe nested directory handling, pagination and directory-traversal rejection. Unit tests run offline with mocked Storage API responses.
+- Do not mark backup complete until a real encrypted file is downloaded, decrypted offline, checked against its manifest, and restored to an **isolated** environment. A successful workflow alone does not prove restore capability.
+- `workflow_dispatch` normally requires the workflow to be present on the repository default branch. Keep it on this feature branch during review; activation requires the reviewed and approved merge in a later release step, not an automatic bypass of branch protection.
+- The backup schedule is intentionally absent until initial manual backup/restore passes and free-tier storage/usage constraints are reviewed.
+
+Note: Postgres dumps that include managed `auth` and `storage` schemas may require careful selective restore into a fresh Supabase project. Never restore them directly over an active managed project. Restoration procedures are unverified.
