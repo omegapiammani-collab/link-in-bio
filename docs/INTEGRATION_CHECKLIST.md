@@ -194,3 +194,10 @@
 - [ ] Verify an off-GitHub `.tar.gz.gpg` copy and decrypt/list independently with the private recovery passphrase.
 - [ ] Full isolated Auth + Storage database recovery and API verification remains unpassed; archived private Storage bucket contained **zero media objects**. Do not infer nonempty media recovery from the Owner smoke test that deletes its own fixture.
 - [x] Keep application `main` untouched, PR Draft, live Supabase untouched, no paid upgrades.
+
+## Final Owner Storage acceptance update — 3 November 2026
+
+- [x] **Owner Storage E2E passed according to the user**: the Preview Admin smoke test reported upload, download, byte-for-byte verification, and deletion of the tiny test PNG succeeded. All four steps were explicitly confirmed, superseding the earlier "pass criterion unconfirmed" entry. This is a user-observed UI result, not a separate HTTP capture.
+- [ ] This test deliberately deletes the file, so the existing encrypted backup still has zero media objects. Independent nonempty-media restore and non-Owner Storage REST tests remain open.
+- [ ] Full Auth/Storage managed-to-isolated Supabase-compatible restore still needs a separate environment. A raw managed `pg_dump` is not automatically compatible with a vanilla PostgreSQL target; consult the Supabase portable roles/schema/data dump procedure before restore.
+- [ ] Confirm an off-GitHub GPG copy independently decrypts and checksums; user has already reported offsite custody, but cryptographic verification has not been done.
