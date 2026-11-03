@@ -63,3 +63,22 @@ Note: Postgres dumps that include managed `auth` and `storage` schemas may requi
 - [ ] **This is an offline simulated restore, not a real Supabase restore.** A production-like restore of an actual encrypted archive including Supabase Auth/Storage schemas and actual file bytes is still pending.
 - [ ] The `backup-manual.yml` workflow remains manual and disabled until protected credentials and off-site retention are configured.
 - [ ] Full disaster recovery must also test application RLS, OAuth reconfiguration, Storage APIs and file-byte re-import into an isolated target before Phase 1 can be signed off.
+
+## Verified feature-branch-only trigger (3 November 2026)
+
+**No default-branch merge required for the branch-scoped `push` trigger.** GitHub still requires a workflow file on the default branch for the `workflow_dispatch` button, but a separately scoped `push` event works on `feature/phase-1-foundation`.
+
+The staged workflow `.github/workflows/backup-manual.yml` now accepts pushes that change **only** its trigger path `ops/backup-request.txt` on the exact Phase 1 feature branch. The request has one `mode=` line:
+- `mode=preflight` — checks the branch, scripts, migrations and toolchain without injecting or reading protected GitHub backup secrets. The real backup job is intentionally **skipped**.
+- `mode=live` — explicitly requests the encrypted backup job **after preflight**. This has **not** been requested or run and must not be triggered until the credential names, artifact destination permissions/retention, database connection and isolated recovery plan are confirmed.
+
+**Observed evidence:** GitHub Actions run #41644690880, commit `1aa3dadd1b372bd22ff17870467daa146d450c30`, completed successfully. The `preflight` job passed and the `backup` job was skipped, so **no real project data, credentials or Storage media were read**.
+
+The trigger-file workflow was added and executed entirely on the feature branch; `main` and the Draft PR status were not changed. Changing other files, including tests and documentation, cannot trigger a backup run through this branch-scoped request path. The backup job remains untested with live credentials. Secret values are never to be committed, logged, or pasted into chat.
+
+### Next safety gates
+1. Independently confirm the presence (names only) of all three GitHub repository Actions Secrets.
+2. Verify the configured PostgreSQL Session Pooler URL works with read-only `pg_dump`, and confirm the legacy `service_role` key is compatible with the Storage API script, without printing either credential.
+3. Review the elevated service-role key scope, GitHub artifact ACL/retention and the policy for recovering the encryption passphrase.
+4. Only after those checks, request one `mode=live` run with a fresh request ID, verify an encrypted artifact exists, and rehearse decryption/restore **off the live Supabase project**.
+5. Confirm real non-Owner Google login denial independently. None of the steps above requires merging the Draft PR or enabling paid tiers.
