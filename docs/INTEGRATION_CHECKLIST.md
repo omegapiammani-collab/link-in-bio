@@ -87,3 +87,11 @@
 - [ ] Owner must press `เริ่มทดสอบ Storage` on the refreshed Preview Admin page and report outcome. RLS tests are not substitutes for this real API test.
 - [ ] Finalize encrypted backup secrets in GitHub Actions directly (do not share them in chat), run manual backup only after approved merge, download and verify encrypted archive, restore-test in isolated environment; then enable a weekly schedule if it stays within free quotas.
 - [ ] Supabase dashboard Auth > Providers inspection remains pending because authenticated dashboard access was not available. Do not claim Email/Password disabled.
+
+## Google-only provider setting — 3 November 2026
+- [x] User provided Supabase Dashboard screenshots confirming Google Sign-in was enabled and Email Provider was initially enabled.
+- [x] User reports switching **Email Provider off** in Supabase Auth Providers and saving.
+- [x] Database rechecked after reported change: one Google identity, one Owner mapping, zero residual media files.
+- [ ] Independently inspect persisted provider configuration (the connected Browser Use session has not authenticated to Supabase dashboard).
+- [ ] User should sign in via Google again after switching Email Provider off, verify /admin and then log out.
+- [ ] Supabase Security Advisor continues to show the Pro-only leaked-password protection warning; avoid upgrading merely to remove this warning. Since Google-only is intended, verify Email Provider remains disabled.
