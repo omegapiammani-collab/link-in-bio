@@ -36,7 +36,7 @@ jobs:
           else
             test -f ops/backup-request.txt
             mode="$(sed -n 's/^mode=//p' ops/backup-request.txt)"
-            [[ "$mode" == "preflight" || "$mode" == "secret-check" || "$mode" == "live" ]] || { echo "Invalid request mode"; exit 1; }
+            [[ "$mode" == "preflight" || "$mode" == "secret-check" || "$mode" == "connection-check" || "$mode" == "live" ]] || { echo "Invalid request mode"; exit 1; }
             test "$(grep -c '^mode=' ops/backup-request.txt)" -eq 1
           fi
           if [[ "$mode" == "preflight" ]]; then
@@ -80,6 +80,58 @@ jobs:
           fi
           echo "All three secret names are configured and backup passphrase length gate passed"
           echo "No secret value was printed; no database/Storage request or backup was performed"
+
+  connection-readiness:
+    needs: preflight
+    if: needs.preflight.outputs.mode == 'connection-check'
+    runs-on: ubuntu-latest
+    timeout-minutes: 7
+    steps:
+      - name: Check read-only PostgreSQL connection without exposing credentials
+        env:
+          DATABASE_URL: ${{ secrets.BACKUP_DATABASE_URL }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          set +x
+          test -n "$DATABASE_URL" || { echo "::error::Database secret missing"; exit 1; }
+          if ! docker run --rm --network host -e DATABASE_URL postgres:17 \
+            sh -ec 'pg_dump --dbname="$DATABASE_URL" --schema-only --no-owner --no-acl --schema=public --file=/dev/null >/dev/null 2>&1'; then
+            echo "::error::PostgreSQL connection or read privilege failed; check pooler URI, password and permissions in GitHub Settings"
+            exit 1
+          fi
+          echo "PostgreSQL read-only schema export succeeded; no dump artifact created"
+
+      - name: Check private Storage listing without downloading objects
+        env:
+          SUPABASE_STORAGE_KEY: ${{ secrets.BACKUP_STORAGE_SERVICE_ROLE_KEY }}
+          SUPABASE_URL: https://mmbhuxiejfqipttyujop.supabase.co
+        shell: bash
+        run: |
+          set -euo pipefail
+          set +x
+          python3 - <<'PY'
+          import json, os, sys
+          from urllib.error import HTTPError, URLError
+          from urllib.request import Request, urlopen
+          key = os.getenv("SUPABASE_STORAGE_KEY", "")
+          if not key:
+              sys.exit("Missing Storage credential")
+          url = os.environ["SUPABASE_URL"] + "/storage/v1/object/list/link-in-bio-media"
+          request = Request(url, data=b'{"prefix":"","limit":1}', method="POST", headers={
+              "apikey": key, "Authorization": "Bearer " + key, "Content-Type": "application/json"
+          })
+          try:
+              with urlopen(request, timeout=30) as response:
+                  result = json.load(response)
+          except HTTPError as exc:
+              sys.exit("Storage list permission or key failure; HTTP " + str(exc.code))
+          except (URLError, ValueError, TimeoutError):
+              sys.exit("Storage list connection or response failure")
+          if not isinstance(result, list):
+              sys.exit("Unexpected Storage list response")
+          print("Private Storage read-only listing succeeded; no object bytes downloaded")
+          PY
 
   backup:
     needs: preflight
