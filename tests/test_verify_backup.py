@@ -36,8 +36,8 @@ class VerifyBackupTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as d:
             root = self.setup_data(d)
             (root / "media/folder/image.png").write_bytes(b"wrong file")
-            with self.assertRaisesRegex(ValueError, "Media byte count mismatch"):
-                    mod.check_archive_tree(root)
+            with self.assertRaisesRegex(ValueError, "Media content checksum mismatch"):
+                mod.check_archive_tree(root)
 
     def test_undeclared_file_rejected(self):
         with tempfile.TemporaryDirectory() as d:
