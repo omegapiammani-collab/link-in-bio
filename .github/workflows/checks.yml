@@ -13,9 +13,15 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - run: npm install --no-audit --no-fund
+      - run: npm ci --no-audit --no-fund
       - run: npm run check
       - run: npm run build
+      - name: Validate Cloudflare vinext production build
+        run: npm run build:vinext
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: https://mmbhuxiejfqipttyujop.supabase.co
+          NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: sb_publishable_test_only
+          OWNER_AUTH_USER_ID: 00000000-0000-0000-0000-000000000000
 
   bootstrap-vinext:
     if: github.event_name == 'push' && github.ref == 'refs/heads/feature/phase-1-foundation'
