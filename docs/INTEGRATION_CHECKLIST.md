@@ -65,3 +65,14 @@
 - [ ] Investigate Supabase leaked-password-protection warning and Google-only sign-in settings.
 - [ ] Non-Owner real Google-session denial remains untested; RLS negative session simulations and anonymous browser denial passed.
 - [ ] Backup/export restore exercise, Supabase Storage policies, rate-limiting, audit-write and page-version publishing transaction controls are pending.
+
+## Security hardening — 3 November 2026 (migration 0004 applied)
+- [x] Applied `harden_publishing_audit_and_media` migration to the connected project and committed the exact SQL in `supabase/migrations/0004_harden_publishing_audit_and_media.sql`.
+- [x] Immutable tables `page_versions` and `audit_events` are Owner-readable but authenticated clients cannot write or edit them; trusted server Publish/Audit workflows must be implemented before Phase 2 edits.
+- [x] `backup_manifests` is also read-only for authenticated clients, preventing fabricated backup/restore verification evidence.
+- [x] Created private `link-in-bio-media` Storage bucket, maximum 5 MiB per image, JPEG/PNG/WebP/GIF only; 4 Owner-scoped Storage RLS policies exist; zero files initially.
+- [x] Supabase Security Advisor has no new database/RLS findings; the sole warning concerns leaked-password protection, which Supabase documents as Pro-only. The only existing Auth account has no password.
+- [ ] Check **Supabase Auth > Providers > Email** and disable password-based sign-in if not needed, while retaining Google OAuth; this provider configuration was not modified via MCP.
+- [ ] Perform actual authenticated media upload/download and anonymous/non-Owner access denial tests. Catalog/policy tests are not sufficient for full Storage acceptance.
+- [ ] Create four encrypted weekly *off-Supabase* backup sets, including database records **and actual Storage file bytes**, and independently restore-test at least one set. See `docs/BACKUP_AND_RESTORE_FREE.md`. A runbook is **not** an operational backup.
+- [ ] Decide on secure server-only rate limiting, audit event writers, and atomic version publication before any production launch.
