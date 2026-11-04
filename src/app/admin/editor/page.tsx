@@ -18,6 +18,8 @@ export default async function EditorPage({ searchParams }: Props) {
   const pageId = typeof params.pageId === 'string' && isUuid(params.pageId)
     ? params.pageId : undefined;
   const draftPageId = canUseExistingDraft ? pageId : undefined;
+  const canPublish = process.env.PHASE2_PUBLISH_ENABLED === 'true' &&
+    process.env.PHASE2_PUBLIC_RENDER_ENABLED === 'true';
 
   return (
     <main className="mx-auto max-w-5xl px-5 py-10 space-y-6">
@@ -31,7 +33,7 @@ export default async function EditorPage({ searchParams }: Props) {
             : 'โหมดตัวอย่างส่วนตัว: ข้อมูลอยู่ในหน้านี้ชั่วคราว ยังไม่มีการบันทึกลงฐานข้อมูลหรือเผยแพร่'}
         </p>
       </header>
-      <DraftEditor key={draftPageId ?? 'preview'} draftPageId={draftPageId} />
+      <DraftEditor key={draftPageId ?? 'preview'} draftPageId={draftPageId} canPublish={canPublish} />
     </main>
   );
 }
