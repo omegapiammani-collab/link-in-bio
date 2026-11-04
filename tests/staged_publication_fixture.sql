@@ -30,23 +30,23 @@ reset role;
 set role authenticated;
 select set_config('request.jwt.claim.sub','aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',false);
 do $check$
-declare page_id uuid; v_id uuid; v_num integer; v_before integer;
+declare v_page uuid; v_id uuid; v_num integer; v_before integer;
         blocked boolean:=false;
 begin
-  select id into page_id from public.pages where slug='compat-test';
+  select id into v_page from public.pages where slug='compat-test';
   select version_id,version_number into v_id,v_num
-    from public.publish_page_checked(page_id,3,true);
+    from public.publish_page_checked(v_page,3,true);
   if v_id is null or v_num<>3 then raise exception 'audited public release mismatch'; end if;
-  if (select visibility from public.pages where id=page_id)<>'public' then
+  if (select visibility from public.pages where id=v_page)<>'public' then
     raise exception 'explicit publication did not set public visibility'; end if;
 
-  v_before:=(select count(*) from public.page_versions where page_id=page_id);
+  v_before:=(select count(*) from public.page_versions where page_id=v_page);
   begin
-    perform * from public.publish_page_checked(page_id,2,false);
+    perform * from public.publish_page_checked(v_page,2,false);
   exception when raise_exception then blocked:=true;
   end;
-  if not blocked or (select count(*) from public.page_versions where page_id=page_id)<>v_before
-     or (select visibility from public.pages where id=page_id)<>'public' then
+  if not blocked or (select count(*) from public.page_versions where page_id=v_page)<>v_before
+     or (select visibility from public.pages where id=v_page)<>'public' then
     raise exception 'stale release did not roll back';
   end if;
 end;
@@ -81,10 +81,10 @@ reset role;
 set role authenticated;
 select set_config('request.jwt.claim.sub','aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',false);
 do $check$
-declare page_id uuid; v_rev bigint;
+declare v_page uuid; v_rev bigint;
 begin
-  select id into page_id from public.pages where slug='compat-test';
-  v_rev:=public.save_page_draft_audited(page_id,3,
+  select id into v_page from public.pages where slug='compat-test';
+  v_rev:=public.save_page_draft_audited(v_page,3,
     '{"name":"Never public draft","description":"","links":[]}'::jsonb);
   if v_rev<>4 then raise exception 'draft after public release failed'; end if;
 end;
@@ -102,10 +102,10 @@ reset role;
 set role authenticated;
 select set_config('request.jwt.claim.sub','aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',false);
 do $check$
-declare page_id uuid; v_number int;
+declare v_page uuid; v_number int;
 begin
-  select id into page_id from public.pages where slug='compat-test';
-  select version_number into v_number from public.publish_page_checked(page_id,4,false);
+  select id into v_page from public.pages where slug='compat-test';
+  select version_number into v_number from public.publish_page_checked(v_page,4,false);
   if v_number<>4 then raise exception 'unlisted republish mismatch'; end if;
 end;
 $check$;
