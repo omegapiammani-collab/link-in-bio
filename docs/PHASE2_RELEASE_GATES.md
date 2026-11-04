@@ -39,6 +39,13 @@ apply hosted migrations, use a paid tier, or merge into `main`.
 
 No production changes, OAuth credentials, secrets, deployments, or account settings were made to document this evidence.
 
+## Isolated Supabase Free Phase 2 test project — 4 November 2026
+
+- [x] New isolated test project `hfsvnbbckfugrxugrnuc` created in Singapore on the existing Free Organization; quoted project cost USD 0/month. Existing `mmbhuxiejfqipttyujop` remains separate and untouched.
+- [x] Read-only checks: test project ACTIVE_HEALTHY, no application public tables, no applied project migrations and no current security-advisor findings in this empty state.
+- [x] Added fail-closed offline staging configuration checks in `scripts/verify_phase2_staging_env.mjs` and documented an approval-gated sequence in `docs/PHASE2_STAGING_PREP.md`.
+- [ ] Hosted test migrations 0001–0007, Google OAuth and dedicated Cloudflare Worker remain **not applied / not deployed**, pending separate approval.
+
 ## Unmet external / release-specific gates
 
 - [ ] **Real Google OAuth happy-path + PKCE callback** tested end-to-end with
