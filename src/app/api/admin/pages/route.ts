@@ -57,3 +57,21 @@ export async function POST(request: NextRequest) {
   }
   return reply({ pageId: result.page_id, revision: 1 }, 201);
 }
+
+/** Owner-only page index. Disabled by default, read-only, never publishes drafts. */
+export async function GET() {
+  if (process.env.PHASE2_PAGE_LIST_ENABLED !== 'true') {
+    return reply({ error: 'unavailable' }, 404);
+  }
+  if (!await getOwner()) return reply({ error: 'forbidden' }, 403);
+
+  const db = await createSupabaseServerClient();
+  const { data, error } = await db.from('pages')
+    .select('id,slug,status,visibility,updated_at')
+    .is('deleted_at', null)
+    .order('updated_at', { ascending: false })
+    .order('id', { ascending: true })
+    .limit(50);
+  if (error) return reply({ error: 'page_list_failed' }, 500);
+  return reply({ pages: data ?? [], cappedAt: 50 }, 200);
+}
