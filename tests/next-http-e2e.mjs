@@ -96,7 +96,7 @@ execFileSync('docker',[
   'run','--rm','--network','host','-e','PGPASSWORD=ci-only-local-password',
   'postgres:17','psql','-h','127.0.0.1','-U','postgres','-d','storage_http_ci',
   '-v','ON_ERROR_STOP=1','-c',
-  "INSERT INTO public.owner_config(singleton,auth_user_id) VALUES(true,'"+ownerId+"'::uuid)"
+  "UPDATE public.owner_config SET auth_user_id='"+ownerId+"'::uuid WHERE singleton"
 ],{stdio:'pipe'});
 
 const env={
