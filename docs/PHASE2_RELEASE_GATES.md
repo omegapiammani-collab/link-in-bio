@@ -13,6 +13,7 @@ apply hosted migrations, use a paid tier, or merge into `main`.
 - [x] Real Storage HTTP exercises private image byte uploads/downloads,
   Signed URLs and Owner/Non-Owner denial. Separate DR fixture restores both
   file bytes and database permissions and verifies signed downloads.
+- [x] The SQL public reader filters **inactive** profile links BEFORE returning JSON to anonymous clients; direct RPC callers cannot retrieve hidden link URLs. A dedicated regression also tests disabling anonymous reads at the private database switch.
 - [x] New staged SQL migration `0007_staged_publication.sql` adds an Owner-only
   explicit publish transaction and a narrowly scoped anonymous published-snapshot
   reader. Both DB release switches default to **false** in the private schema:
@@ -25,7 +26,9 @@ apply hosted migrations, use a paid tier, or merge into `main`.
 - [x] Owner-only image upload API enforces max 5 MiB, allowed MIME,
   PNG/JPEG/WebP/GIF header signature and origin validation before Storage upload.
   Owner-only media signed-URL API permits server-generated per-user paths
-  and gives 60-second URLs. Both features default off.
+  and gives 60-second URLs. Actual Next.js HTTP + Storage regression verifies
+  rejection of Non-Owner, cross-origin, spoofed PNG and traversal attempts,
+  and successful byte-identical signed retrieval. Both features default off.
 
 ## Unmet external / release-specific gates
 
@@ -75,3 +78,9 @@ Phase 2 is **staged in source control; NOT production-complete**. Do not mark
 it complete until all applicable external and product-scope gates above are
 verified. Preserve the 0 THB/month paid-services target and stop before any
 resource requires payment.
+
+## Recent ephemeral CI evidence (4 November 2026)
+
+- [GitHub Actions #41790905841](https://github.com/omegapiammani-collab/link-in-bio/actions/runs/41790905841): passed staged public/unlisted snapshot and release HTTP tests.
+- [GitHub Actions #41791845574](https://github.com/omegapiammani-collab/link-in-bio/actions/runs/41791845574): passed default-off DB release interlock, Owner media upload/sign through Next HTTP, Supabase Storage recovery and Cloudflare build.
+- Additional inactive-link filtering regression added in a later commit; check the latest CI run before calling it passed.
