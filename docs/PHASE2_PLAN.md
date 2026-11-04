@@ -83,3 +83,10 @@
 - [x] CI run [#41768046909](https://github.com/omegapiammani-collab/link-in-bio/actions/runs/41768046909) completed the `Test audited draft transactions in isolated PostgreSQL 17` step successfully, including SQL migration execution, synthetic Owner vs Non-Owner authorization, draft conflict, forced audit-failure rollback, and rejected direct draft UPDATE.
 - [ ] The fixture uses locally defined `auth.uid()` and ownership helper instead of full Supabase Auth/API/RLS; **a complete Supabase-stack integration test remains mandatory** before any hosted write flag can be enabled.
 - [ ] The application build and CI's overall result on this latest workflow must be inspected separately before marking all checks passed.
+
+## RPC direct-call security tests — 4 November 2026
+
+- [x] Closed a validation gap: callers can invoke authenticated RPCs without traversing the Next.js endpoint, so PostgreSQL now applies an ASCII-DNS authority allowlist and rejects numeric IP hosts, IPv6 URL hosts, userinfo, whitespace/backslashes, local suffixes and malformed authority syntax.
+- [x] Expanded the isolated PostgreSQL fixture with direct-RPC negative tests, a valid external-link positive test, and an authenticated Non-Owner save denial.
+- [ ] Re-run PostgreSQL integration CI after correcting a PostgreSQL `substring` syntax issue discovered in the first run. The earliest expanded test **failed** and must not be recorded as PASS. No hosted Supabase mutation was attempted.
+- [ ] This DNS-format validation does not itself prevent DNS rebinding or malicious redirects if the server later fetches URLs. The current application does not perform such URL fetches.
