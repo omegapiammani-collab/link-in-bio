@@ -285,7 +285,7 @@ jobs:
             -e ENABLE_IMAGE_TRANSFORMATION=false \
             -v "$RUNNER_TEMP/storage-binary-data:/var/lib/storage" \
             supabase/storage-api:v1.81.0
-          trap 'docker logs phase2-storage-http-restored || true; docker rm -f phase2-storage-http-restored || true; docker logs phase2-storage-http || true; docker rm -f phase2-storage-http || true; rm -f "$RUNNER_TEMP/storage-api-recovery.dump"' EXIT
+          trap 'docker logs phase2-gotrue-storage || true; docker rm -f phase2-gotrue-storage || true; docker logs phase2-storage-http-restored || true; docker rm -f phase2-storage-http-restored || true; docker logs phase2-storage-http || true; docker rm -f phase2-storage-http || true; rm -f "$RUNNER_TEMP/storage-api-recovery.dump"' EXIT
           ready=0
           for i in $(seq 1 60); do
             if curl -fsS http://127.0.0.1:5000/status >/dev/null 2>&1; then ready=1; break; fi
@@ -351,6 +351,44 @@ jobs:
           done
           test "$restored_ready" -eq 1 || { echo "Restored Storage HTTP service failed" >&2; exit 1; }
           node tests/storage-api-restored-http.mjs
+          # Independent real GoTrue is started with a second disposable Auth DB.
+          # Actual signed JWTs cross the HTTP boundary into the running Storage
+          # API. Only test identity IDs are synchronized into Storage's app DB.
+          docker run --rm --network host \
+            -e PGPASSWORD=ci-only-local-password postgres:17 \
+            psql -h 127.0.0.1 -U postgres -d storage_http_ci \
+              -v ON_ERROR_STOP=1 -c 'CREATE DATABASE gotrue_storage_ci'
+          docker run --rm --network host \
+            -e PGPASSWORD=ci-only-local-password postgres:17 \
+            psql -h 127.0.0.1 -U postgres -d gotrue_storage_ci \
+              -v ON_ERROR_STOP=1 -c 'CREATE SCHEMA IF NOT EXISTS auth'
+          docker run --rm --network host \
+            -e PGPASSWORD=ci-only-local-password postgres:17 \
+            psql -h 127.0.0.1 -U postgres -d gotrue_storage_ci \
+              -v ON_ERROR_STOP=1 \
+              -c 'ALTER ROLE postgres IN DATABASE gotrue_storage_ci SET search_path=auth,public'
+          docker run -d --name phase2-gotrue-storage --network host \
+            -e GOTRUE_API_HOST=0.0.0.0 \
+            -e GOTRUE_API_PORT=9999 \
+            -e API_EXTERNAL_URL=http://127.0.0.1:9999 \
+            -e GOTRUE_DB_DRIVER=postgres \
+            -e "GOTRUE_DB_DATABASE_URL=postgres://postgres:ci-only-local-password@127.0.0.1:5432/gotrue_storage_ci?sslmode=disable" \
+            -e GOTRUE_SITE_URL=http://localhost:3000 \
+            -e GOTRUE_DISABLE_SIGNUP=false \
+            -e GOTRUE_EXTERNAL_EMAIL_ENABLED=true \
+            -e GOTRUE_MAILER_AUTOCONFIRM=true \
+            -e GOTRUE_JWT_AUD=authenticated \
+            -e GOTRUE_JWT_EXP=3600 \
+            -e GOTRUE_JWT_SECRET=ci-only-real-storage-signing-secret-at-least-32-chars \
+            supabase/gotrue:v2.197.0
+          gotrue_ready=0
+          for i in $(seq 1 60); do
+            if curl -fsS http://127.0.0.1:9999/health >/dev/null 2>&1; then gotrue_ready=1; break; fi
+            if ! docker inspect -f '{{.State.Running}}' phase2-gotrue-storage 2>/dev/null | grep -q true; then break; fi
+            sleep 1
+          done
+          test "$gotrue_ready" -eq 1 || { echo "Real GoTrue for Storage JWT test failed" >&2; exit 1; }
+          node tests/gotrue-storage-http.mjs
           rm -f "$RUNNER_TEMP/storage-api-recovery.dump"
 
   bootstrap-vinext:
