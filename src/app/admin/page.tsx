@@ -1,3 +1,4 @@
+import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { getOwner } from '@/lib/auth/owner';
 import { SignOutButton } from './sign-out-button';
@@ -10,7 +11,9 @@ export default async function AdminPage(){
   <p className="text-sm text-slate-500">Foundation · Owner-only</p>
   <h1 className="text-3xl font-bold">แผงควบคุม</h1>
   <p>บัญชี Owner ได้รับการยืนยันแล้ว</p>
+  <p className="text-sm text-amber-800">Phase 2 เป็นตัวอย่างในหน่วยความจำ ยังไม่บันทึกหรือเผยแพร่</p>
   <p className="text-sm text-slate-500">การสร้างหน้า การแก้ไขและเผยแพร่จะพัฒนาใน Phase ถัดไป</p>
+  <Link href="/admin/editor" className="inline-block rounded-lg bg-slate-900 px-4 py-3 text-white no-underline">ทดลองเครื่องมือจัดหน้า (Phase 2)</Link>
   <MediaSmokeTest/>
   <SignOutButton/>
  </main>;
