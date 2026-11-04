@@ -33,4 +33,17 @@ CREATE FUNCTION public.rls_auto_enable() RETURNS event_trigger
 \i /work/supabase/migrations/0005_audited_draft_transactions.sql
 \i /work/supabase/migrations/0006_immutable_publish_core.sql
 
-SELECT 'PASS: GoTrue Auth + Storage schema shared DB, real migrations 0001-0006' AS result;
+-- The API connects with a limited authenticator role, not postgres.
+DO $api$
+BEGIN
+ IF NOT EXISTS(SELECT 1 FROM pg_roles WHERE rolname='authenticator') THEN
+   CREATE ROLE authenticator LOGIN NOINHERIT PASSWORD 'ci-disposable-postgrest-password';
+ END IF;
+END
+$api$;
+GRANT anon,authenticated TO authenticator;
+GRANT CONNECT ON DATABASE storage_http_ci TO authenticator;
+GRANT USAGE ON SCHEMA public TO anon,authenticated;
+-- Do not expose the Storage schema through PostgREST in this shared test.
+-- The real Storage API exclusively handles storage object operations.
+SELECT 'PASS: GoTrue Auth + Storage schema shared DB, real migrations 0001-0006, PostgREST limited role' AS result;
