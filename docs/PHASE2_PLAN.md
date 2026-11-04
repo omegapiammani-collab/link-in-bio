@@ -142,3 +142,9 @@
 - [x] Added `tests/editor-safety.test.mjs` regression checks for these guards.
 - [ ] Browser navigation through client-side router links and actual authenticated Supabase SSR/Google OAuth still require isolated end-to-end testing. The browser's default unload dialog text is controlled by the browser.
 - [ ] All hosted write flags remain off, migration 0005 unapplied to hosted Supabase, and no public publishing/production rollout is authorized.
+
+## Deterministic JWT negative regression — 4 November 2026
+
+- [x] Fixed an intermittent synthetic JWT test error: mutating the last base64url character may alter unused padding bits without changing the signature bytes. The negative test now modifies the first signature character and deterministically invalidates the HMAC.
+- [ ] Check the new GitHub Actions results for commit `f5b8022e` before claiming a full CI pass.
+- [ ] No hosted Supabase writes, production flag changes, deployment or merge into main were performed.
