@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { configuredOwnerId, isVerifiedOwner } from '../src/lib/auth/owner-policy.mjs';
+import { configuredOwnerId, isVerifiedOwner, verifyOwnerSession } from '../src/lib/auth/owner-policy.mjs';
 
 const owner = 'a663bad6-815c-46be-9860-c576e01b9642';
 const stranger = '47c1f07f-fef0-459b-b87c-74a426cc1d3c';
@@ -27,4 +27,26 @@ test('valid Owner identity is accepted only after successful verified getUser re
   assert.equal(isVerifiedOwner(owner, undefined, null), false);
   assert.equal(isVerifiedOwner(owner, { id: 123 }, null), false);
   assert.equal(isVerifiedOwner(null, { id: owner }, null), false);
+});
+
+test('async owner verifier trusts getUser only, never getSession', async () => {
+  let called = 0;
+  const client = { auth: {
+    getUser: async () => { called++; return { data: { user: { id: owner } }, error: null }; },
+    getSession: () => { throw Error('unverified session must never be used'); }
+  }};
+  assert.deepEqual(await verifyOwnerSession(client, owner), { id: owner });
+  assert.equal(called, 1);
+  assert.equal(await verifyOwnerSession(client, 'bad-config'), null);
+  assert.equal(called, 1, 'must not query Auth with invalid Owner config');
+});
+
+test('async owner verifier fails closed for mismatch, Auth error and exceptions', async () => {
+  const source = result => ({ auth: { getUser: async () => result } });
+  assert.equal(await verifyOwnerSession(source({ data: { user: { id: stranger } }, error: null }), owner), null);
+  assert.equal(await verifyOwnerSession(source({ data: { user: { id: owner } }, error: new Error('expired') }), owner), null);
+  assert.equal(await verifyOwnerSession(source({ data: { user: null }, error: null }), owner), null);
+  assert.equal(await verifyOwnerSession({ auth: { getUser: async () => { throw new Error('network'); } } }, owner), null);
+  assert.equal(await verifyOwnerSession({}, owner), null);
+  assert.equal(await verifyOwnerSession(null, owner), null);
 });
