@@ -171,6 +171,39 @@ begin
 end;
 $test$;
 
+-- Exercise actual PostgreSQL RLS instead of grants alone. The synthetic
+-- ownership helper substitutes only for Supabase Auth; the RLS engine is real.
+reset role;
+alter table public.pages enable row level security;
+alter table public.page_drafts enable row level security;
+alter table public.audit_events enable row level security;
+create policy fixture_owner_pages on public.pages for select to authenticated
+ using ((select app_private.is_owner()));
+create policy fixture_owner_drafts on public.page_drafts for select to authenticated
+ using ((select app_private.is_owner()));
+create policy fixture_owner_audit on public.audit_events for select to authenticated
+ using ((select app_private.is_owner()));
+set role authenticated;
+select set_config('request.jwt.claim.sub','aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',false);
+do $rls$
+begin
+ if (select count(*) from public.pages where slug='test-page') <> 1
+    or (select count(*) from public.page_drafts) <> 2
+    or (select count(*) from public.audit_events) <> 4 then
+   raise exception 'owner RLS visibility mismatch';
+ end if;
+end;
+$rls$;
+select set_config('request.jwt.claim.sub','bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',false);
+do $rls$
+begin
+ if (select count(*) from public.pages) <> 0
+   or (select count(*) from public.page_drafts) <> 0
+   or (select count(*) from public.audit_events) <> 0 then
+   raise exception 'non-owner RLS data exposure';
+ end if;
+end;
+$rls$;
 reset role;
 set role anon;
 do $test$
