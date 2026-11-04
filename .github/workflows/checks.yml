@@ -392,6 +392,96 @@ jobs:
           node tests/gotrue-storage-http.mjs
           rm -f "$RUNNER_TEMP/storage-api-recovery.dump"
 
+  isolated-shared-auth-storage:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: ci-only-local-password
+          POSTGRES_DB: storage_http_ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d storage_http_ci"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Verify real GoTrue and Storage HTTP share one temporary PostgreSQL database
+        run: |
+          mkdir -p "$RUNNER_TEMP/storage-shared-files"
+          trap 'docker logs phase2-shared-storage || true; docker rm -f phase2-shared-storage || true; docker logs phase2-shared-gotrue || true; docker rm -f phase2-shared-gotrue || true' EXIT
+          docker run --rm --network host \
+            -e PGPASSWORD=ci-only-local-password postgres:17 \
+            psql -h 127.0.0.1 -U postgres -d storage_http_ci \
+              -v ON_ERROR_STOP=1 -c 'CREATE SCHEMA IF NOT EXISTS auth'
+          docker run --rm --network host \
+            -e PGPASSWORD=ci-only-local-password postgres:17 \
+            psql -h 127.0.0.1 -U postgres -d storage_http_ci \
+              -v ON_ERROR_STOP=1 \
+              -c 'ALTER ROLE postgres IN DATABASE storage_http_ci SET search_path=auth,public'
+          docker run -d --name phase2-shared-gotrue --network host \
+            -e GOTRUE_API_HOST=0.0.0.0 \
+            -e GOTRUE_API_PORT=9999 \
+            -e API_EXTERNAL_URL=http://127.0.0.1:9999 \
+            -e GOTRUE_DB_DRIVER=postgres \
+            -e "GOTRUE_DB_DATABASE_URL=postgres://postgres:ci-only-local-password@127.0.0.1:5432/storage_http_ci?sslmode=disable" \
+            -e GOTRUE_SITE_URL=http://localhost:3000 \
+            -e GOTRUE_DISABLE_SIGNUP=false \
+            -e GOTRUE_EXTERNAL_EMAIL_ENABLED=true \
+            -e GOTRUE_MAILER_AUTOCONFIRM=true \
+            -e GOTRUE_JWT_AUD=authenticated \
+            -e GOTRUE_JWT_DEFAULT_GROUP_NAME=authenticated \
+            -e GOTRUE_JWT_EXP=3600 \
+            -e GOTRUE_JWT_SECRET=ci-only-real-storage-signing-secret-at-least-32-chars \
+            supabase/gotrue:v2.197.0
+          ready=0
+          for i in $(seq 1 60); do
+            if curl -fsS http://127.0.0.1:9999/health >/dev/null 2>&1; then ready=1; break; fi
+            if ! docker inspect -f '{{.State.Running}}' phase2-shared-gotrue 2>/dev/null | grep -q true; then break; fi
+            sleep 1
+          done
+          test "$ready" -eq 1 || { echo "Shared GoTrue failed health check" >&2; exit 1; }
+          docker run -d --name phase2-shared-storage --network host \
+            -e SERVER_PORT=5000 \
+            -e "DATABASE_URL=postgresql://postgres:ci-only-local-password@127.0.0.1:5432/storage_http_ci?sslmode=disable" \
+            -e DB_INSTALL_ROLES=true \
+            -e DB_SUPER_USER=postgres \
+            -e AUTH_JWT_SECRET=ci-only-real-storage-signing-secret-at-least-32-chars \
+            -e AUTH_JWT_ALGORITHM=HS256 \
+            -e STORAGE_BACKEND=file \
+            -e STORAGE_FILE_BACKEND_PATH=/var/lib/storage \
+            -e FILE_STORAGE_BACKEND_PATH=/var/lib/storage \
+            -e STORAGE_PUBLIC_URL=http://127.0.0.1:5000 \
+            -e TENANT_ID=ci-only \
+            -e REGION=local \
+            -e FILE_SIZE_LIMIT=5242880 \
+            -e GLOBAL_S3_BUCKET=ci-only-storage \
+            -e IMAGE_TRANSFORMATION_ENABLED=false \
+            -e ENABLE_IMAGE_TRANSFORMATION=false \
+            -v "$RUNNER_TEMP/storage-shared-files:/var/lib/storage" \
+            supabase/storage-api:v1.81.0
+          storage_ready=0
+          for i in $(seq 1 60); do
+            if curl -fsS http://127.0.0.1:5000/status >/dev/null 2>&1; then storage_ready=1; break; fi
+            if ! docker inspect -f '{{.State.Running}}' phase2-shared-storage 2>/dev/null | grep -q true; then break; fi
+            sleep 1
+          done
+          test "$storage_ready" -eq 1 || { echo "Shared Storage HTTP failed health check" >&2; exit 1; }
+          docker run --rm --network host \
+            -e PGPASSWORD=ci-only-local-password \
+            -v "$PWD:/work:ro" postgres:17 \
+            psql -h 127.0.0.1 -U postgres -d storage_http_ci \
+              -v ON_ERROR_STOP=1 -f /work/tests/shared_gotrue_storage_schema.sql
+          SHARED_GOTRUE_STORAGE_DB=true node tests/gotrue-storage-http.mjs
+
   bootstrap-vinext:
     if: github.event_name == 'push' && github.ref == 'refs/heads/feature/phase-1-foundation'
     runs-on: ubuntu-latest
