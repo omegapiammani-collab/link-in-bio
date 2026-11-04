@@ -4,6 +4,18 @@
 --
 -- Explicit publication sets visibility. No direct client table UPDATE or
 -- SELECT on page_versions or page_drafts is granted to anon.
+-- Database-side release interlock: no client-controlled app flag can turn
+-- on publishing or the public reader if this migration is merely staged.
+-- Both are OFF unless an administrator explicitly updates this private row.
+create table if not exists app_private.release_settings (
+  singleton boolean primary key default true check(singleton),
+  publish_enabled boolean not null default false,
+  public_read_enabled boolean not null default false
+);
+insert into app_private.release_settings(singleton,publish_enabled,public_read_enabled)
+values(true,false,false) on conflict(singleton) do nothing;
+revoke all on app_private.release_settings from public,anon,authenticated;
+
 create or replace function public.publish_page_checked(
   p_page_id uuid, p_expected_revision bigint, p_make_public boolean
 ) returns table(version_id uuid,version_number integer)
@@ -13,6 +25,10 @@ declare
   v_id uuid;
   v_number integer;
 begin
+  if not exists(select 1 from app_private.release_settings
+       where singleton and publish_enabled) then
+    raise exception 'release_disabled' using errcode='42501';
+  end if;
   if (select auth.uid()) is null or not (select app_private.is_owner()) then
     raise exception 'forbidden' using errcode='42501';
   end if;
@@ -61,7 +77,9 @@ as $read$
   from public.pages p
   inner join public.page_versions v
     on v.id=p.published_version_id and v.page_id=p.id
-  where p_slug is not null and length(p_slug) between 1 and 64
+  where exists(select 1 from app_private.release_settings
+      where singleton and public_read_enabled)
+    and p_slug is not null and length(p_slug) between 1 and 64
     and p.slug=p_slug
     and p.status='published'
     and p.visibility='public'
