@@ -143,7 +143,7 @@ jobs:
             -e GOTRUE_JWT_EXP=3600 \
             -e GOTRUE_JWT_SECRET=ci-only-gotrue-jwt-secret-32-plus-chars \
             supabase/gotrue:v2.197.0
-          trap 'docker logs phase2-gotrue || true; docker rm -f phase2-gotrue || true' EXIT
+          trap 'docker logs phase2-postgrest-gotrue || true; docker rm -f phase2-postgrest-gotrue || true; docker logs phase2-gotrue || true; docker rm -f phase2-gotrue || true' EXIT
           ready=0
           for i in $(seq 1 60); do
             if curl -fsS http://127.0.0.1:9999/health >/dev/null 2>&1; then ready=1; break; fi
@@ -152,6 +152,29 @@ jobs:
           done
           if [ "$ready" -ne 1 ]; then
             echo "Isolated GoTrue health check failed" >&2
+            exit 1
+          fi
+          # GoTrue is now ready with its actual auth.users/auth.uid().
+          # Apply the unmodified application migrations in THIS SAME database.
+          docker run --rm --network host \
+            -e PGPASSWORD=ci-only-local-password \
+            -v "$PWD:/work:ro" postgres:17 \
+            psql -h 127.0.0.1 -U postgres -d gotrue_ci \
+            -v ON_ERROR_STOP=1 -f /work/tests/gotrue_full_schema.sql
+          docker run -d --name phase2-postgrest-gotrue --network host \
+            -e "PGRST_DB_URI=postgres://authenticator:ci-disposable-postgrest-password@127.0.0.1:5432/gotrue_ci" \
+            -e PGRST_DB_SCHEMAS=public \
+            -e PGRST_DB_ANON_ROLE=anon \
+            -e PGRST_JWT_SECRET=ci-only-gotrue-jwt-secret-32-plus-chars \
+            -e PGRST_DB_CHANNEL_ENABLED=false \
+            postgrest/postgrest:v14.18
+          api_ready=0
+          for i in $(seq 1 40); do
+            if curl -fsS http://127.0.0.1:3000/ >/dev/null 2>&1; then api_ready=1; break; fi
+            sleep 1
+          done
+          if [ "$api_ready" -ne 1 ]; then
+            echo "GoTrue-linked PostgREST did not become ready" >&2
             exit 1
           fi
           node tests/gotrue-auth-http.mjs
