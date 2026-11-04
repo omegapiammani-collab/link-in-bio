@@ -130,6 +130,19 @@ end;
 $test$;
 
 select set_config('request.jwt.claim.sub','aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',false);
+-- A real external link remains valid at the same RPC boundary.
+do $test$
+declare v_doc jsonb; v_page uuid;
+begin
+  v_doc := jsonb_build_object('name','Public link','description','',
+    'links',jsonb_build_array(jsonb_build_object(
+      'id','8c4eb157-fac9-430c-8f47-0a112922671d',
+      'title','Example','url','https://example.co.th/path?q=1','active',true)));
+  select page_id into v_page from public.create_page_draft_audited('good-link',v_doc);
+  if v_page is null then raise exception 'safe external link rejected'; end if;
+end;
+$test$;
+
 -- Direct RPC calls must be rejected just like the application API validation.
 do $test$
 declare
