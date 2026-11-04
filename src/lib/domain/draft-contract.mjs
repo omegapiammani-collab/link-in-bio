@@ -7,7 +7,10 @@ export function validExternalUrl(value) {
   try {
     const parsed=new URL(value);
     return (parsed.protocol==='https:'||parsed.protocol==='http:') &&
-      Boolean(parsed.hostname.includes('.')) && !/^\\d{1,3}(?:\\.\\d{1,3}){3}$/.test(parsed.hostname) &&\n      !parsed.hostname.endsWith('.localhost') && !parsed.hostname.endsWith('.local') &&\n      !parsed.username && !parsed.password;
+      Boolean(parsed.hostname.includes('.')) &&
+      !/^\d{1,3}(?:\.\d{1,3}){3}$/.test(parsed.hostname) &&
+      !parsed.hostname.endsWith('.localhost') && !parsed.hostname.endsWith('.local') &&
+      !parsed.username && !parsed.password;
   } catch { return false; }
 }
 export function normalizeDraftDocument(input) {
