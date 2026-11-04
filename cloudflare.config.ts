@@ -2,7 +2,7 @@ import { bindings, defineConfig, defineWorker } from "cf/config";
 
 export default defineConfig({
   worker: defineWorker({
-    name: "link-in-bio-preview",
+    name: "link-in-bio-phase2-preview",
     entrypoint: "vinext/server/fetch-handler",
     compatibilityDate: "2026-11-03",
     compatibilityFlags: ["nodejs_compat"],
