@@ -11,3 +11,19 @@ export function isVerifiedOwner(expectedId, user, error) {
     typeof user === 'object' && typeof user.id === 'string' &&
     user.id.toLowerCase() === configured;
 }
+
+/**
+ * Authenticate with Supabase Auth, not with an unverified cookie/session.
+ * Missing config, rejected identities, and transient network failures fail closed.
+ * Injectable client permits offline tests without a linked or hosted Supabase.
+ */
+export async function verifyOwnerSession(client, expectedId) {
+  if (!configuredOwnerId(expectedId)) return null;
+  if (!client || typeof client.auth?.getUser !== 'function') return null;
+  try {
+    const { data, error } = await client.auth.getUser();
+    return isVerifiedOwner(expectedId, data?.user, error) ? data.user : null;
+  } catch {
+    return null;
+  }
+}
