@@ -155,6 +155,13 @@ try{
     return {status:response.status,data,headers:response.headers};
   }
 
+  const noCode=await call('/auth/callback');
+  assert.ok([302,303,307,308].includes(noCode.status));
+  assert.match(noCode.headers.get('location')??'',/\/login\?error=callback/);
+  const badCode=await call('/auth/callback?code=invalid-pkce-one-time-code');
+  assert.ok([302,303,307,308].includes(badCode.status));
+  assert.match(badCode.headers.get('location')??'',/\/login\?error=callback/);
+
   // Anonymous and Non-Owner cannot enter the actual Next admin page,
   // and their API requests fail even when the CI-only write flags are on.
   for(const cookie of [undefined,other.cookie]){
@@ -288,6 +295,31 @@ try{
   assert.equal(removePublic.status,200,JSON.stringify(removePublic.data));
   assert.equal((await call('/'+slug)).status,404,
     'unlisted republish did not revoke public route access');
+
+  // Sign-out of a real GoTrue SSR session clears the request cookie jar.
+  // The protected Next route must reject a browser after local logout.
+  const jar=new Map(owner.cookie.split('; ').map(piece=>{
+    const index=piece.indexOf('=');
+    return [decodeURIComponent(piece.slice(0,index)),
+      decodeURIComponent(piece.slice(index+1))];
+  }));
+  const signoutClient=createServerClient(base,key,{
+    cookies:{
+      getAll:()=>[...jar].map(([name,value])=>({name,value})),
+      setAll:items=>items.forEach(({name,value,options})=>{
+        if(!value||options?.maxAge===0)jar.delete(name);
+        else jar.set(name,value);
+      })
+    }
+  });
+  const signedOut=await signoutClient.auth.signOut();
+  assert.equal(signedOut.error,null,'GoTrue SSR logout failed');
+  const clearedCookie=[...jar].map(([name,value])=>
+    encodeURIComponent(name)+'='+encodeURIComponent(value)).join('; ');
+  const afterLogout=await call('/admin',{cookie:clearedCookie});
+  assert.ok([302,303,307,308].includes(afterLogout.status),
+    'signed-out browser still reached admin');
+  assert.match(afterLogout.headers.get('location')??'',/\/login/);
 
   console.log('PASS: actual Next HTTP /admin and guarded APIs, real GoTrue SSR cookies, PostgREST RLS, CSRF, CAS and explicit immutable publish privacy');
 } finally {
