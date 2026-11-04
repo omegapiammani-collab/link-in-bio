@@ -63,3 +63,16 @@
 - [ ] **No isolated Owner/Non-Owner HTTP integration test completed yet**. No claim of persisted hosted writes. The feature flag remains disabled on the current deployment.
 - [ ] Add atomic audited page+draft creation and draft-save audit transaction before widening write access. Ensure the current conditional UPDATE path is tested against real RLS and an isolated Supabase stack.
 - [ ] Production deployment, `main` merge and previously deferred full Auth/Storage disaster recovery remain blocked.
+
+## Phase 2 audited creation and save transaction — 4 November 2026
+
+- [x] Added **unapplied** migration `0005_audited_draft_transactions.sql` with private Owner-checked transactional functions and narrow public `SECURITY INVOKER` RPC wrappers. Database writes were **not** executed against hosted Supabase.
+- [x] Atomic creation: `pages` + `page_drafts` + `audit_events` succeed or fail together; pages start as unlisted drafts.
+- [x] Atomic save: compare-and-swap revision, update of `profile_json`, and append-only `draft.saved` audit entry succeed or fail together.
+- [x] Migration revokes direct authenticated INSERT/UPDATE/DELETE on `pages` and `page_drafts`, retaining authenticated read under Owner RLS. The migration also validates basic JSON/link shapes, UUIDs, link uniqueness and a restricted URL syntax in the RPC layer; Next.js runs the stricter shared URL validation before any RPC call.
+- [x] Added `POST /api/admin/pages` with **two** disabled-by-default server-side flags (`PHASE2_PAGE_CREATE_ENABLED`, `PHASE2_DRAFT_WRITE_ENABLED`), server-side Owner verification, same-origin and payload limits, slug protection and atomic RPC.
+- [x] Switched the existing gated PATCH API to audited RPC instead of direct UPDATE. 409 conflicts are returned for stale revisions.
+- [x] Added repository regression tests checking that audited RPCs, authorization, and table permission restrictions exist.
+- [ ] **Migration is not yet tested on a real isolated Supabase PostgreSQL stack.** Source-level checks alone cannot prove SQL syntax, rollback behavior, privilege enforcement, 409 handling or RLS end-to-end.
+- [ ] Create a disposable Supabase environment, apply the migration only there, run Owner/Non-Owner and conflicting-writer integration tests, plus audit-INSERT failure rollback tests. Review SQL function privileges with Supabase security advisors.
+- [ ] No public renderer, actual publishing, production deployment, GitHub secret modification, paid tier, or merge to main.
