@@ -176,3 +176,12 @@
 - [x] CI [#41774487806](https://github.com/omegapiammani-collab/link-in-bio/actions/runs/41774487806) passed full migration order including Storage policy checks and PostgREST; CI [#41774632397](https://github.com/omegapiammani-collab/link-in-bio/actions/runs/41774632397) passed `npm run check` including the new SSR cookie tests.
 - [ ] The **actual local Supabase Auth (GoTrue), Storage HTTP, Google OAuth redirects, full cookie proxy flow and Auth/Storage recovery exercise** remain unverified. These are still blocked from Production acceptance.
 - [ ] No changes to hosted database, production deployment, feature flags, GitHub Secrets, `main`, or paid service subscriptions.
+
+## Real isolated Supabase Auth (GoTrue) HTTP regression — 4 November 2026
+
+- [x] Added `tests/gotrue-auth-http.mjs` and an independent GitHub Actions `isolated-gotrue-auth` job. The job starts pinned `supabase/gotrue:v2.197.0` against a **disposable PostgreSQL 17** database in the GitHub Actions runner, not against any linked or hosted Supabase project. No external OAuth providers, real credentials, GitHub secrets, hosted database writes or paid service were used.
+- [x] The isolated test registers two synthetic accounts through the real GoTrue HTTP signup endpoint, signs in through the actual `@supabase/ssr` SDK, validates cookie persistence and server-side `auth.getUser()` authorization, denies a real Non-Owner account and missing cookies, and verifies logout denies continued access.
+- [x] CI required explicit creation of the `auth` schema and its PostgreSQL search path for standalone GoTrue. The SDK must receive a project-root URL (not an `/auth/v1` path) and the isolated fetch adapter forwards requests only to `127.0.0.1`. See the preceding failed startup/configuration CI attempts; no false PASS is recorded for them.
+- [x] [GitHub Actions #41775460546](https://github.com/omegapiammani-collab/link-in-bio/actions/runs/41775460546) successfully completed its **real GoTrue HTTP + SSR Cookie** test step and the separately isolated PostgreSQL/PostgREST and check/build steps.
+- [ ] The new GoTrue job is a real Auth service integration **but does not yet prove a GoTrue-issued JWT against the project's application PostgREST/RLS in the same disposable database**, a real Google OAuth redirect, real Storage HTTP upload/download, Next.js cookie proxy, or full Auth/Storage disaster recovery.
+- [ ] All `PHASE2_*` Production feature flags remain disabled, migrations 0005/0006 unapplied to hosted Supabase, no hosted changes and no merge to `main`.
