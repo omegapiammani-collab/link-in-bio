@@ -24,6 +24,17 @@ This addresses the public `SECURITY DEFINER` advisor warnings without replacing 
 - The post-deployment test (only after CI success) must query `pg_class.relrowsecurity`, `pg_policies`, `pg_catalog.has_table_privilege`, `pg_catalog.has_function_privilege`, owner and pages counts, and OFF flags; run Supabase security advisor again.
 - No actual external Google accounts are yet configured in the isolated test project. CI synthetic JWT and offline PostgreSQL negative tests are not a substitute for real Google OAuth / hosted PostgREST denial evidence.
 
+## Verified hosted-test outcome — 4 November 2026
+
+**Applied to isolated project `hfsvnbbckfugrxugrnuc` only**, after successful CI rounds [#516](https://github.com/omegapiammani-collab/link-in-bio/actions/runs/41802687268) and [#522](https://github.com/omegapiammani-collab/link-in-bio/actions/runs/41803232591).
+
+- Project migration history includes migrations `0001` through `0009`, including `0008_secure_release_settings` and `0009_private_privileged_rpc`.
+- `release_settings`: RLS true, policy count zero, `anon` SELECT false, `authenticated` UPDATE false, publish false, public read false.
+- RPC: zero exposed `SECURITY DEFINER` functions among `publish_page_checked` and `read_published_profile`, and two privileged private implementations. Anonymous public/private publish execution false; anonymous public reader execution true but returns null under default OFF.
+- Owner records zero, page records zero; private Storage bucket still has `public=false`.
+- Security Advisor: **no WARN-level findings** after migration; only `INFO rls_enabled_no_policy` on the private release-settings table, intentionally deny-by-default.
+- Not yet run: Google OAuth Owner and NonOwner on isolated test origin, independent hosted PostgREST RPC tests using genuine Google identities, Cloudflare deployment, Production rollout. These are **not** implied by the CI success.
+
 ## Follow-up warnings
 
 The underlying private `SECURITY DEFINER` implementations still require rigorous code review and hosted direct-RPC denial tests. The public wrappers are intended to resolve advisor warnings, but only a post-migration advisory scan can confirm that. Keep `app_private` excluded from exposed schemas, and never grant private table privileges to API roles.
