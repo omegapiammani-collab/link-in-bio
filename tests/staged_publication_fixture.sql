@@ -140,4 +140,47 @@ end;
 $check$;
 reset role;
 
+-- Inactive links are confidential: the anonymous RPC itself must filter them.
+set role authenticated;
+select set_config('request.jwt.claim.sub','aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',false);
+do $check$
+declare v_page uuid; v_revision bigint; v_version integer;
+begin
+  select id into v_page from public.pages where slug='compat-test';
+  v_revision:=public.save_page_draft_audited(v_page,4,
+    '{"name":"Filtered","description":"","links":[{"id":"4d1c3998-c419-4f4f-8a01-f8c8a8b2bce9","title":"Private inactive","url":"https://private.example.com/secret","active":false},{"id":"6f15d9c5-58f9-43ed-ab50-44eb7c361ae7","title":"Public active","url":"https://example.com/","active":true}]}'::jsonb);
+  if v_revision<>5 then raise exception 'media test draft save failed'; end if;
+  select version_number into v_version from public.publish_page_checked(v_page,5,true);
+  if v_version<>5 then raise exception 'filtered snapshot release failed'; end if;
+end;
+$check$;
+reset role;
+set role anon;
+do $check$
+declare payload jsonb;
+begin
+  payload:=public.read_published_profile('compat-test');
+  if pg_catalog.jsonb_array_length(payload->'links')<>1 or
+     payload #>> '{links,0,title}'<>'Public active' or
+     payload::text like '%Private inactive%' or
+     payload::text like '%private.example.com%' then
+    raise exception 'anonymous RPC disclosed an inactive link';
+  end if;
+end;
+$check$;
+reset role;
+
+-- Even if an existing page is marked public, an administrator may disable
+-- public data access independently of the frontend feature flag.
+update app_private.release_settings set public_read_enabled=false where singleton;
+set role anon;
+do $check$
+begin
+  if public.read_published_profile('compat-test') is not null then
+    raise exception 'database reader interlock failed';
+  end if;
+end;
+$check$;
+reset role;
+
 select 'PASS: immutable public release, unlisted privacy, Owner authorization, stale rollback, draft isolation' as result;
