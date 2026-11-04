@@ -1,6 +1,6 @@
 # Phase 2 — Profile and Link Editor
 
-**Status:** Preview scaffold only. This phase is developed on `feature/phase-2-editor-foundation`, branched from the unmerged Phase 1 feature branch. The application's `main` remains unchanged and no production publish is authorized.
+**Status:** Staged Owner editor, audited draft transactions, gated publication, immutable public renderer and private media APIs are implemented on `feature/phase-2-editor-foundation`. Isolated CI covers the core; **production acceptance remains BLOCKED** by real Google OAuth, hosted deployment parity, operations and release approval. `main` and Production remain unchanged. See `docs/PHASE2_RELEASE_GATES.md`.
 
 ## Delivered in this initial slice
 
