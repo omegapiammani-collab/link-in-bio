@@ -125,3 +125,10 @@
 - [x] Updated the server `getOwner()` helper to call `supabase.auth.getUser()` and apply the shared fail-closed identity matcher; rejects authentication errors or different user IDs.
 - [x] Added unit regressions in `tests/owner-policy.test.mjs` for malformed config, case-insensitive UUID comparison, non-owner sessions, and failed auth responses.
 - [ ] This change does **not** constitute full Supabase Auth HTTP/cookie/OAuth integration or full Storage recovery acceptance. Existing production feature flags remain disabled.
+
+## Auth failure-mode regression — 4 November 2026
+
+- [x] Added `verifyOwnerSession()` as an isolated async verification boundary, using `supabase.auth.getUser()` and rejecting unverified session lookups; an invalid Owner UUID prevents any Auth request.
+- [x] Fail-closed handling now covers Auth SDK exceptions, network faults and server client configuration errors without granting any Owner privileges.
+- [x] Added offline tests for valid Owner, other users, expired/errored responses, thrown Auth errors, missing clients and prevention of `getSession()` use in permission checks.
+- [ ] Still requires actual Supabase Auth HTTP + SSR cookie + Google OAuth E2E tests in a disposable stack before any hosted write mode is enabled.
