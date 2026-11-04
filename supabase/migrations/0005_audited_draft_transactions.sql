@@ -9,6 +9,7 @@ declare
   v_link jsonb;
   v_id text;
   v_url text;
+  v_authority text;
   v_seen text[] := array[]::text[];
 begin
   if p_document is null or pg_catalog.jsonb_typeof(p_document) <> 'object'
@@ -30,14 +31,19 @@ begin
     end if;
     v_id := v_link->>'id';
     v_url := v_link->>'url';
+    -- Parse just the URL authority. A strict ASCII-DNS allowlist prevents
+    -- direct RPC callers from bypassing the Next.js hostname checks.
+    v_authority := pg_catalog.substring(v_url from '^https?://([^/?#]+)');
     if v_id !~* '^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$'
       or v_id = any(v_seen)
       or length(btrim(v_link->>'title'))=0 or length(v_link->>'title')>100
       or length(v_url)>2048 or length(v_url)<8
-      or v_url !~* '^https?://'
       or v_url ~ '[[:space:][:cntrl:]]'
-      or v_url ~* '^https?://[^/?#]*@'
-      or v_url ~* '^https?://(localhost|[^/?#]*\.(local|localhost|internal|test|invalid))([:/?#]|$)' then
+      or position(chr(92) in v_url) > 0
+      or v_authority is null
+      or v_authority !~* '^([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+([a-z]{2,63}|xn--[a-z0-9-]{2,59})(:[0-9]{1,5})?$'
+      or lower(split_part(v_authority, ':', 1)) ~ '\.(local|localhost|internal|test|invalid)$'
+      or lower(split_part(v_authority, ':', 1)) ~ '(^|\.)home\.arpa$' then
       raise exception 'invalid_link' using errcode='22023';
     end if;
     v_seen := pg_catalog.array_append(v_seen,v_id);
