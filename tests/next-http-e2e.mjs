@@ -324,7 +324,34 @@ try{
   assert.equal((await sendImage(owner.cookie,app,Buffer.from('not a real PNG'))).status,415);
   const media=await sendImage(owner.cookie,app,png);
   assert.equal(media.status,201,JSON.stringify(media.value));
-  assert.match(media.value.path,new RegExp('^profiles/'+ownerId+'/[0-9a-f-]+\\.png
+  assert.ok(media.value.path.startsWith('profiles/'+ownerId+'/') &&
+    media.value.path.endsWith('.png'), 'server did not assign an Owner-scoped PNG path');
+  assert.equal(media.value.sizeBytes,png.length);
+  const signOther=await call('/api/admin/media/sign',{
+    cookie:other.cookie,method:'POST',body:{path:media.value.path}
+  });
+  assert.equal(signOther.status,403);
+  const signTraversed=await call('/api/admin/media/sign',{
+    cookie:owner.cookie,method:'POST',
+    body:{path:'profiles/'+ownerId+'/../secret.png'}
+  });
+  assert.equal(signTraversed.status,422);
+  const signDifferentOwner=await call('/api/admin/media/sign',{
+    cookie:owner.cookie,method:'POST',
+    body:{path:'profiles/'+foreignId+'/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa.png'}
+  });
+  assert.equal(signDifferentOwner.status,422);
+  const signedMedia=await call('/api/admin/media/sign',{
+    cookie:owner.cookie,method:'POST',body:{path:media.value.path}
+  });
+  assert.equal(signedMedia.status,200,JSON.stringify(signedMedia.data));
+  assert.equal(signedMedia.data.expiresIn,60);
+  const signedImage=await fetch(signedMedia.data.signedUrl);
+  assert.equal(signedImage.status,200,'signed media URL not downloadable');
+  assert.deepEqual(Buffer.from(await signedImage.arrayBuffer()),png,
+    'signed media URL content differs from uploaded bytes');
+
+  // Sign-out of a real GoTrue SSR session clears the request cookie jar.
   // The protected Next route must reject a browser after local logout.
   const jar=new Map(owner.cookie.split('; ').map(piece=>{
     const index=piece.indexOf('=');
