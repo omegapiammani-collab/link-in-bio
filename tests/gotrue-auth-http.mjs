@@ -166,6 +166,84 @@ forgedParts[2] = (forgedParts[2][0] === 'A' ? 'B' : 'A') + forgedParts[2].slice(
 const badSignature = await dataApi('/page_drafts?select=revision', { token: forgedParts.join('.') });
 assert.equal(badSignature.status, 401, JSON.stringify(badSignature));
 
+// Storage *metadata* RLS via real GoTrue JWT and the disposable PostgREST
+// storage schema. This is NOT the Supabase Storage file HTTP API.
+async function storageApi(path, { token, method = 'GET', body } = {}) {
+  const response = await fetch(rest + '/' + path, {
+    method,
+    headers: {
+      Accept: 'application/json',
+      ...(token ? { Authorization: 'Bearer ' + token } : {}),
+      ...(method === 'GET' ? { 'Accept-Profile': 'storage' } : {
+        'Content-Profile': 'storage',
+        Prefer: 'return=representation'
+      }),
+      ...(body === undefined ? {} : { 'Content-Type': 'application/json' })
+    },
+    ...(body === undefined ? {} : { body: JSON.stringify(body) })
+  });
+  const raw = await response.text();
+  let data;
+  try { data = JSON.parse(raw); } catch { data = raw; }
+  return { status: response.status, data };
+}
+const objectPath = 'owner/private-image.png';
+const anonStorage = await storageApi('objects?select=id,name');
+assert.ok([401,403].includes(anonStorage.status), JSON.stringify(anonStorage));
+const intruderInsert = await storageApi('objects', {
+  token: otherJwt, method: 'POST',
+  body: { bucket_id: 'link-in-bio-media', name: 'intruder/no.png' }
+});
+assert.equal(intruderInsert.status, 403, JSON.stringify(intruderInsert));
+const wrongBucketInsert = await storageApi('objects', {
+  token: ownerJwt, method: 'POST',
+  body: { bucket_id: 'other-bucket', name: 'owner/forbidden.png' }
+});
+assert.ok(wrongBucketInsert.status >= 400, JSON.stringify(wrongBucketInsert));
+const ownerInsert = await storageApi('objects', {
+  token: ownerJwt, method: 'POST',
+  body: { bucket_id: 'link-in-bio-media', name: objectPath }
+});
+assert.equal(ownerInsert.status, 201, JSON.stringify(ownerInsert));
+assert.equal(ownerInsert.data?.[0]?.name, objectPath);
+const storageId = ownerInsert.data[0].id;
+const ownerStorage = await storageApi('objects?select=id,name,bucket_id', { token: ownerJwt });
+assert.equal(ownerStorage.status, 200, JSON.stringify(ownerStorage));
+assert.ok(ownerStorage.data.some(o => o.id === storageId), JSON.stringify(ownerStorage));
+const strangerStorage = await storageApi('objects?select=id,name,bucket_id', { token: otherJwt });
+assert.equal(strangerStorage.status, 200, JSON.stringify(strangerStorage));
+assert.ok(!strangerStorage.data.some(o => o.id === storageId),
+  'non-Owner may not see private object metadata');
+const intruderUpdate = await storageApi('objects?id=eq.' + storageId, {
+  token: otherJwt, method: 'PATCH', body: { name: 'intruder/renamed.png' }
+});
+assert.ok([200,204,403,404].includes(intruderUpdate.status),
+  JSON.stringify(intruderUpdate));
+const ownerStillSees = await storageApi('objects?id=eq.' + storageId + '&select=name', {
+  token: ownerJwt
+});
+assert.equal(ownerStillSees.data?.[0]?.name, objectPath,
+  'Non-Owner UPDATE must not change Owner object');
+const intruderDelete = await storageApi('objects?id=eq.' + storageId, {
+  token: otherJwt, method: 'DELETE'
+});
+assert.ok([200,204,403,404].includes(intruderDelete.status),
+  JSON.stringify(intruderDelete));
+const objectStillExists = await storageApi('objects?id=eq.' + storageId + '&select=id', {
+  token: ownerJwt
+});
+assert.equal(objectStillExists.data?.length, 1,
+  'Non-Owner DELETE must not remove Owner object');
+const ownerDelete = await storageApi('objects?id=eq.' + storageId, {
+  token: ownerJwt, method: 'DELETE'
+});
+assert.ok([200,204].includes(ownerDelete.status), JSON.stringify(ownerDelete));
+const ownerAfterDelete = await storageApi('objects?id=eq.' + storageId + '&select=id', {
+  token: ownerJwt
+});
+assert.equal(ownerAfterDelete.data?.length, 0,
+  'Owner DELETE must remove metadata under policy');
+
 const fresh = clientFixture();
 assert.equal(await verifyOwnerSession(fresh.client(), ownerId), null,
   'missing SSR cookies must deny');
