@@ -54,6 +54,17 @@ jobs:
             -v "$PWD:/work:ro" postgres:17 \
             psql -h 127.0.0.1 -U postgres -d postgres \
             -v ON_ERROR_STOP=1 -f /work/tests/audited_transactions_fixture.sql
+      - name: Apply real Phase 1 plus Phase 2 migrations in separate database
+        run: |
+          docker run --rm --network host \
+            -e PGPASSWORD=ci-only-local-password \
+            postgres:17 psql -h 127.0.0.1 -U postgres -d postgres \
+            -v ON_ERROR_STOP=1 -c 'CREATE DATABASE real_schema_compat'
+          docker run --rm --network host \
+            -e PGPASSWORD=ci-only-local-password \
+            -v "$PWD:/work:ro" postgres:17 \
+            psql -h 127.0.0.1 -U postgres -d real_schema_compat \
+            -v ON_ERROR_STOP=1 -f /work/tests/real_schema_compat_fixture.sql
       - name: Prepare isolated PostgREST roles and JWT claim reader
         run: |
           docker run --rm --network host \
