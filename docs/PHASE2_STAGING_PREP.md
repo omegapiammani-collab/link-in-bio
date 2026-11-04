@@ -37,7 +37,7 @@ export PHASE2_EXPECTED_ORIGIN=https://link-in-bio-phase2-preview.omega-piammani.
 node scripts/verify_phase2_staging_env.mjs
 ```
 
-The CLI prints validation errors only, not the values of keys or UUIDs.
+The CLI prints validation errors only, not the values of keys or UUIDs. `npm run deploy:vinext` now invokes this check automatically through `predeploy:vinext`; it blocks deployment without the exact test project, staging origin, valid UUID format and all release flags OFF.
 Offline regression tests run under `npm test` and do not require any live Supabase credentials.
 
 **Do not commit** `.env.local`, tokens, Owner private profile data, OAuth Client Secrets, service-role keys, backups or database passwords.
@@ -61,13 +61,13 @@ The Supabase connector does not expose hosted Auth provider configuration APIs; 
    `https://link-in-bio-phase2-preview.omega-piammani.workers.dev/auth/callback`
    Prefer exact URL entries (no wildcards or Production origins).
 4. The app's actual login button uses `signInWithOAuth({provider:'google',options:{redirectTo:window.location.origin+'/auth/callback'}})`. Its callback exchanges the PKCE code and accepts only an Owner authenticated as the configured test `auth.users.id`. The **Google callback** in step 1 and the **app callback** in step 3 are different and both required.
-5. First Owner bootstrap: after the initial Google provider login attempt, inspect **test** Supabase Auth → Users, verify the intended Owner identity, then explicitly populate the **test** `owner_config` once and set matching `OWNER_AUTH_USER_ID` for the test Worker. Before that Owner ID is provisioned, the app must fail closed. Do not reuse Production's Owner UUID. Never paste Owner email or authentication tokens into documentation.
+5. First Owner bootstrap: deploy only with an unrelated, freshly generated *syntactically valid* placeholder UUID (not a Production user ID) and **all features OFF**. The first approved Google login will be denied by the app's Owner check but creates the test Auth identity; inspect **test** Supabase Auth → Users, verify the identity, then explicitly populate the **test** `owner_config` once and update the staging Worker's `OWNER_AUTH_USER_ID` to the newly created test identity. Before that verified Owner ID is provisioned, the app must fail closed. Do not reuse Production's Owner UUID. Never paste Owner email, login tokens, or OAuth secrets into documentation.
 
 ## Deployment blockers and safe release order
 
 - The connected Cloudflare account currently lists two existing Workers (`bs-sams`, `link-in-bio-preview`), and no `link-in-bio-phase2-preview`. The feature branch `cloudflare.config.ts` now targets **only** the dedicated proposed staging Worker; a CI regression asserts this to prevent overwriting Phase 1.
 - The Cloudflare API connector **cannot read billing/subscription details** with its present OAuth permission (HTTP 403). The [Cloudflare Workers Free pricing page](https://developers.cloudflare.com/workers/platform/pricing/) describes the free tier, but this does not prove the connected account's billing plan. Verify **Workers Free**, no paid-only binding/feature, quota headroom and no upgrade prompt before creating/deploying.
 - Building a real vinext/React Server Components Worker needs the compiled application assets and the correct worker runtime/bindings. An API-uploaded placeholder script is **not** a deployed Phase 2 app and must not be represented as one. The connected Cloudflare API alone does not provide GitHub CI artifacts or an authenticated build runner deployment path.
-- To deploy, use an approved authenticated Wrangler/vinext build workflow (or appropriately permissioned CI) **after** test-specific key/Owner bootstrap and OAuth configuration. Never copy the Phase 1 Worker bindings, reuse its Supabase project, or publish its routes.
+- To deploy, use an approved authenticated Wrangler/vinext build workflow (or appropriately permissioned CI) **after** test-specific publishable key and OAuth configuration. Initial Owner UUID may be an unrelated valid-format bootstrap placeholder that authorizes nobody; subsequently bind the actual verified test Google Auth user's ID. Never copy the Phase 1 Worker bindings, reuse its Supabase project, or publish its routes.
 - First staged deployment: all Phase 2 feature flags OFF and database private switches OFF. Then test /login, /admin Owner, InPrivate NonOwner, logout, and hosted direct RPC denial. No Production release or public profiles.
 
