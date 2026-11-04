@@ -93,6 +93,13 @@ const anonPageList = await call('/pages?select=id,slug');
 check(anonPageList.status === 401 || anonPageList.status === 403,
   'anonymous clients cannot query the page index', anonPageList);
 
+// Publishing has deliberately NO exposed public RPC, even for authenticated Owner.
+const hiddenPublish = await call('/rpc/publish_draft_snapshot', {
+  token: o, method: 'POST', body: { p_page_id: id, p_expected_revision: 1 }
+});
+check(hiddenPublish.status === 404,
+  'private publish function must not be in exposed PostgREST schema', hiddenPublish);
+
 const nonOwnerSave = await save(id, 1, s);
 check(nonOwnerSave.status === 403, 'Non-Owner cannot save Owner draft', nonOwnerSave);
 const updated = await save(id, 1);
