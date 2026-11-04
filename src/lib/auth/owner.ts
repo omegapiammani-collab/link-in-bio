@@ -1,13 +1,16 @@
 import 'server-only';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
-import { configuredOwnerId, isVerifiedOwner } from './owner-policy.mjs';
+import { configuredOwnerId, verifyOwnerSession } from './owner-policy.mjs';
 
-/** Fail closed without a fully valid Owner UUID or verified Auth user. */
+/** Fail closed without a verified Supabase Auth session and exact Owner UUID. */
 export async function getOwner() {
   const expectedId = configuredOwnerId(process.env.OWNER_AUTH_USER_ID);
   if (!expectedId) return null;
-  const supabase = await createSupabaseServerClient();
-  const { data, error } = await supabase.auth.getUser();
-  if (!isVerifiedOwner(expectedId, data?.user, error)) return null;
-  return data.user;
+  try {
+    const supabase = await createSupabaseServerClient();
+    return await verifyOwnerSession(supabase, expectedId);
+  } catch {
+    // Missing Supabase configuration and transient SSR failures never grant access.
+    return null;
+  }
 }
