@@ -70,12 +70,12 @@ jobs:
           docker run --rm --network host \
             -e PGPASSWORD=ci-only-local-password \
             -v "$PWD:/work:ro" postgres:17 \
-            psql -h 127.0.0.1 -U postgres -d postgres \
+            psql -h 127.0.0.1 -U postgres -d real_schema_compat \
             -v ON_ERROR_STOP=1 -f /work/tests/postgrest_setup.sql
       - name: Test PostgREST HTTP JWT RLS and audited RPC
         run: |
           docker run --rm -d --name phase2-postgrest --network host \
-            -e PGRST_DB_URI="postgres://authenticator:ci-disposable-postgrest-password@127.0.0.1:5432/postgres" \
+            -e PGRST_DB_URI="postgres://authenticator:ci-disposable-postgrest-password@127.0.0.1:5432/real_schema_compat" \
             -e PGRST_DB_SCHEMAS=public \
             -e PGRST_DB_ANON_ROLE=anon \
             -e PGRST_JWT_SECRET=ci-only-postgrest-fixture-secret-at-least-32-chars \
