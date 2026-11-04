@@ -64,6 +64,13 @@ No production changes, OAuth credentials, secrets, deployments, or account setti
 - [x] Post-migration Supabase Security Advisor shows **no WARN-level findings** for the previously exposed privileged RPCs. Only remaining **INFO**: `rls_enabled_no_policy` for `app_private.release_settings` — **intentional deny-by-default** under a non-exposed schema with explicit revoked table ACLs. [Supabase linter INFO](https://supabase.com/docs/guides/database/database-linter?lint=0008_rls_enabled_no_policy).
 - [ ] **Important:** Real Google OAuth on isolated hosted Test and independent direct hosted PostgREST attempts with Owner/NonOwner remain open. Offline CI covers actual PostgREST/JWT, but is not evidence of hosted Google OAuth authorization. Keep both DB release switches OFF and do not enable any Phase 2 runtime feature flags or deploy without distinct authorization.
 
+## GitHub repository restoration verification (4 November 2026)
+
+- [x] Restored `omegapiammani-collab/link-in-bio` and verified feature branches and all nine SQL migration files are readable again.
+- [x] `checks.yml` includes `workflow_dispatch` on `feature/phase-2-editor-foundation`; only the feature branch was modified after restore.
+- [ ] **New post-restore CI proof:** the Actions API returned zero workflow runs as checked after restore. Prior runs are historical evidence only; require a fresh run before Cloudflare Phase 2 staging deploy.
+- [ ] Existing draft PR #2 targets `feature/phase-1-foundation`, *not* `main`; leave it draft and unmerged.
+
 ## Unmet external / release-specific gates
 
 - [ ] **Real Google OAuth happy-path + PKCE callback** tested end-to-end with
@@ -103,8 +110,10 @@ cannot override the private database release switches without privileged
 database access.
 
 The CI test updates these DB switches **only inside disposable PostgreSQL**.
-Neither the migrations nor flags have been applied or enabled on hosted
-Supabase or Cloudflare. No new service subscription is authorized.
+Approved migrations 0001–0009 have been applied only to isolated hosted Supabase
+Phase 2 Test (`hfsvnbbckfugrxugrnuc`), and verified private release switches
+remain OFF. No Phase 2 Cloudflare Worker has been deployed; the existing Phase 1
+Preview and Production remain unchanged. No paid subscription is authorized.
 
 ## Release decision
 
