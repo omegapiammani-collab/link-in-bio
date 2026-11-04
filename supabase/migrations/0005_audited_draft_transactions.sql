@@ -96,3 +96,9 @@ revoke all on function public.create_page_draft_audited(text,jsonb) from public,
 revoke all on function public.save_page_draft_audited(uuid,bigint,jsonb) from public,anon,authenticated;
 grant execute on function public.create_page_draft_audited(text,jsonb) to authenticated;
 grant execute on function public.save_page_draft_audited(uuid,bigint,jsonb) to authenticated;
+
+-- After this migration, a browser Owner cannot bypass the audit trail using
+-- direct PostgREST INSERT/UPDATE/DELETE on the two mutable draft tables.
+-- SELECT remains owner-gated via existing RLS.
+revoke insert, update, delete on public.pages from authenticated;
+revoke insert, update, delete on public.page_drafts from authenticated;
