@@ -31,7 +31,7 @@ export default async function EditorPage({ searchParams }: Props) {
             : 'โหมดตัวอย่างส่วนตัว: ข้อมูลอยู่ในหน้านี้ชั่วคราว ยังไม่มีการบันทึกลงฐานข้อมูลหรือเผยแพร่'}
         </p>
       </header>
-      <DraftEditor draftPageId={draftPageId} />
+      <DraftEditor key={draftPageId ?? 'preview'} draftPageId={draftPageId} />
     </main>
   );
 }
