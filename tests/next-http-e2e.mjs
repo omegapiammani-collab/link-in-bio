@@ -116,7 +116,9 @@ const env={
   PHASE2_DRAFT_WRITE_ENABLED:'true',
   PHASE2_PAGE_LIST_ENABLED:'true',
   PHASE2_PUBLISH_ENABLED:'true',
-  PHASE2_PUBLIC_RENDER_ENABLED:'true'
+  PHASE2_PUBLIC_RENDER_ENABLED:'true',
+  PHASE2_MEDIA_UPLOAD_ENABLED:'true',
+  PHASE2_MEDIA_SIGN_ENABLED:'true'
 };
 const server=spawn(process.execPath,['node_modules/next/dist/bin/next','start','-p',String(appPort),'-H','localhost'],{
   env,stdio:['ignore','pipe','pipe']
@@ -300,6 +302,88 @@ try{
   assert.equal(removePublic.status,200,JSON.stringify(removePublic.data));
   assert.equal((await call('/'+slug)).status,404,
     'unlisted republish did not revoke public route access');
+
+  // Real Next.js media API must validate file magic, size, Owner and CSRF
+  // before invoking the actual private Storage HTTP service with the Owner JWT.
+  const png=Buffer.from(
+    'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/u74AAAAASUVORK5CYII=',
+    'base64'
+  );
+  async function sendImage(cookie, origin, bytes, mime='image/png'){
+    const response=await fetch(app+'/api/admin/media/upload',{
+      method:'POST',headers:{
+        ...(cookie?{cookie}:{}),origin,'content-type':mime
+      },body:bytes
+    });
+    const value=await response.json();
+    return {status:response.status,value};
+  }
+  assert.equal((await sendImage(undefined,app,png)).status,403);
+  assert.equal((await sendImage(other.cookie,app,png)).status,403);
+  assert.equal((await sendImage(owner.cookie,'https://untrusted.example.invalid',png)).status,403);
+  assert.equal((await sendImage(owner.cookie,app,Buffer.from('not a real PNG'))).status,415);
+  const media=await sendImage(owner.cookie,app,png);
+  assert.equal(media.status,201,JSON.stringify(media.value));
+  assert.match(media.value.path,new RegExp('^profiles/'+ownerId+'/[0-9a-f-]+\\.png
+  // The protected Next route must reject a browser after local logout.
+  const jar=new Map(owner.cookie.split('; ').map(piece=>{
+    const index=piece.indexOf('=');
+    return [decodeURIComponent(piece.slice(0,index)),
+      decodeURIComponent(piece.slice(index+1))];
+  }));
+  const signoutClient=createServerClient(base,key,{
+    cookies:{
+      getAll:()=>[...jar].map(([name,value])=>({name,value})),
+      setAll:items=>items.forEach(({name,value,options})=>{
+        if(!value||options?.maxAge===0)jar.delete(name);
+        else jar.set(name,value);
+      })
+    }
+  });
+  const signedOut=await signoutClient.auth.signOut();
+  assert.equal(signedOut.error,null,'GoTrue SSR logout failed');
+  const clearedCookie=[...jar].map(([name,value])=>
+    encodeURIComponent(name)+'='+encodeURIComponent(value)).join('; ');
+  const afterLogout=await call('/admin',{cookie:clearedCookie});
+  assert.ok([302,303,307,308].includes(afterLogout.status),
+    'signed-out browser still reached admin');
+  assert.match(afterLogout.headers.get('location')??'',/\/login/);
+
+  console.log('PASS: actual Next HTTP /admin and guarded APIs, real GoTrue SSR cookies, PostgREST RLS, CSRF, CAS and explicit immutable publish privacy');
+} finally {
+  server.kill('SIGTERM');
+  await new Promise(resolve=>{
+    if(server.exitCode!==null)return resolve();
+    server.once('exit',resolve);
+    setTimeout(resolve,1500).unref();
+  });
+  gateway.close();
+}
+));
+  assert.equal(media.value.sizeBytes,png.length);
+  const signOther=await call('/api/admin/media/sign',{
+    cookie:other.cookie,method:'POST',body:{path:media.value.path}
+  });
+  assert.equal(signOther.status,403);
+  const signTraversed=await call('/api/admin/media/sign',{
+    cookie:owner.cookie,method:'POST',
+    body:{path:'profiles/'+ownerId+'/../secret.png'}
+  });
+  assert.equal(signTraversed.status,422);
+  const signDifferentOwner=await call('/api/admin/media/sign',{
+    cookie:owner.cookie,method:'POST',
+    body:{path:'profiles/'+foreignId+'/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa.png'}
+  });
+  assert.equal(signDifferentOwner.status,422);
+  const signedMedia=await call('/api/admin/media/sign',{
+    cookie:owner.cookie,method:'POST',body:{path:media.value.path}
+  });
+  assert.equal(signedMedia.status,200,JSON.stringify(signedMedia.data));
+  assert.equal(signedMedia.data.expiresIn,60);
+  const signedImage=await fetch(signedMedia.data.signedUrl);
+  assert.equal(signedImage.status,200,'signed media URL not downloadable');
+  assert.deepEqual(Buffer.from(await signedImage.arrayBuffer()),png,
+    'signed media URL content differs from uploaded bytes');
 
   // Sign-out of a real GoTrue SSR session clears the request cookie jar.
   // The protected Next route must reject a browser after local logout.
