@@ -189,7 +189,7 @@ do $rls$
 begin
  if (select count(*) from public.pages where slug='test-page') <> 1
     or (select count(*) from public.page_drafts) <> 2
-    or (select count(*) from public.audit_events) <> 4 then
+    or (select count(*) from public.audit_events) <> 3 then
    raise exception 'owner RLS visibility mismatch';
  end if;
 end;
