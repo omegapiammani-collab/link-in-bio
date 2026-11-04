@@ -41,6 +41,9 @@ BEGIN
  END IF;
 END
 $api$;
+-- Storage API may pre-create the role as NOLOGIN without a password.
+-- Set a CI-only password and restricted connection properties explicitly.
+ALTER ROLE authenticator WITH LOGIN NOINHERIT PASSWORD 'ci-disposable-postgrest-password';
 GRANT anon,authenticated TO authenticator;
 GRANT CONNECT ON DATABASE storage_http_ci TO authenticator;
 GRANT USAGE ON SCHEMA public TO anon,authenticated;
