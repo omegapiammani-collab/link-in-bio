@@ -13,7 +13,7 @@ function validateLink(url: string): string | null {
     : 'กรุณาใช้ URL http/https ของโดเมนสาธารณะที่ถูกต้อง (ไม่รองรับ IP หรือโดเมนภายใน)';
 }
 
-export function DraftEditor({ draftPageId }: { draftPageId?: string }) {
+export function DraftEditor({ draftPageId, canPublish = false }: { draftPageId?: string; canPublish?: boolean }) {
   const [name, setName] = useState('ชื่อโปรไฟล์ของฉัน');
   const [description, setDescription] = useState('ยินดีต้อนรับสู่หน้ารวมลิงก์');
   const [links, setLinks] = useState<LinkDraft[]>(INITIAL_LINKS);
@@ -78,6 +78,46 @@ export function DraftEditor({ draftPageId }: { draftPageId?: string }) {
       } else {
         setFeedback('บันทึกไม่สำเร็จ ข้อมูลในหน้านี้ยังไม่ถูกส่งเผยแพร่');
       }
+    } finally {
+      requestInFlight.current = false;
+      setSaving(false);
+    }
+  }
+
+  async function publish(makePublic: boolean) {
+    if (!canPublish || !draftPageId || revision === null || dirty || invalid ||
+      saving || loading || conflicted || requestInFlight.current) return;
+    const confirmation = makePublic
+      ? 'ยืนยันเผยแพร่หน้าสาธารณะ? ทุกคนที่ทราบ URL จะเข้าถึง Snapshot ที่เผยแพร่ได้'
+      : 'ยืนยันสร้าง Snapshot แบบไม่แสดงสาธารณะ?';
+    if (!window.confirm(confirmation)) return;
+    requestInFlight.current = true;
+    setSaving(true);
+    setFeedback('');
+    try {
+      const response = await fetch('/api/admin/publish/' + encodeURIComponent(draftPageId), {
+        method: 'POST',
+        credentials: 'same-origin',
+        cache: 'no-store',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ expectedRevision: revision, makePublic })
+      });
+      const result: unknown = await response.json();
+      if (!response.ok) {
+        if (response.status === 409) {
+          setConflicted(true);
+          setFeedback('Revision เปลี่ยนไปแล้ว กรุณาโหลดข้อมูลล่าสุดก่อนเผยแพร่');
+        } else {
+          setFeedback('ไม่สามารถเผยแพร่ได้ กรุณาตรวจสอบสิทธิ์และลองใหม่');
+        }
+        return;
+      }
+      const version = result && typeof result === 'object' &&
+        'versionNumber' in result ? (result as { versionNumber: unknown }).versionNumber : null;
+      setFeedback('สร้าง Snapshot เวอร์ชัน ' + String(version) + ' สำเร็จ (' +
+        (makePublic ? 'สาธารณะ' : 'ไม่แสดงสาธารณะ') + ')');
+    } catch {
+      setFeedback('การเชื่อมต่อไม่สำเร็จ ไม่สามารถยืนยันสถานะการเผยแพร่ได้');
     } finally {
       requestInFlight.current = false;
       setSaving(false);
@@ -197,7 +237,7 @@ export function DraftEditor({ draftPageId }: { draftPageId?: string }) {
           </p>
           <p className="text-sm font-medium text-amber-800">
             {draftPageId
-              ? 'โหมดทดสอบ: บันทึกได้เฉพาะฉบับร่างที่มีอยู่แล้ว การเผยแพร่ยังปิดอยู่'
+              ? canPublish ? 'โหมดทดสอบ: การเผยแพร่ต้องยืนยันก่อนทุกครั้ง' : 'โหมดทดสอบ: บันทึกได้เฉพาะฉบับร่าง การเผยแพร่ยังปิดอยู่'
               : 'โหมดตัวอย่าง: ไม่บันทึกข้อมูลและไม่เผยแพร่'}
           </p>
           {draftPageId && <p className="text-xs text-slate-600">Revision {revision} · {dirty ? 'มีการเปลี่ยนแปลงที่ยังไม่บันทึก' : 'ไม่มีการเปลี่ยนแปลงที่รอบันทึก'}</p>}
@@ -208,6 +248,18 @@ export function DraftEditor({ draftPageId }: { draftPageId?: string }) {
               className="rounded-lg bg-slate-900 px-4 py-2 text-white disabled:bg-slate-200 disabled:text-slate-500">
               {saving ? 'กำลังบันทึก...' : draftPageId ? 'บันทึกฉบับร่าง' : 'บันทึกฉบับร่าง (ปิดใช้งาน)'}
             </button>
+            {draftPageId && canPublish && <button type="button"
+              disabled={saving || loading || dirty || conflicted || invalid || revision === null}
+              onClick={() => void publish(false)}
+              className="rounded-lg border px-4 py-2 disabled:opacity-40">
+              บันทึก Snapshot ส่วนตัว
+            </button>}
+            {draftPageId && canPublish && <button type="button"
+              disabled={saving || loading || dirty || conflicted || invalid || revision === null}
+              onClick={() => void publish(true)}
+              className="rounded-lg bg-indigo-700 px-4 py-2 text-white disabled:opacity-40">
+              เผยแพร่หน้าสาธารณะ
+            </button>}
             {draftPageId && <button type="button" disabled={saving || loading}
               onClick={() => void reloadLatest()}
               className="rounded-lg border px-4 py-2 disabled:opacity-50">
