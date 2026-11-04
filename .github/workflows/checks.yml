@@ -54,6 +54,28 @@ jobs:
             -v "$PWD:/work:ro" postgres:17 \
             psql -h 127.0.0.1 -U postgres -d postgres \
             -v ON_ERROR_STOP=1 -f /work/tests/audited_transactions_fixture.sql
+      - name: Prepare isolated PostgREST roles and JWT claim reader
+        run: |
+          docker run --rm --network host \
+            -e PGPASSWORD=ci-only-local-password \
+            -v "$PWD:/work:ro" postgres:17 \
+            psql -h 127.0.0.1 -U postgres -d postgres \
+            -v ON_ERROR_STOP=1 -f /work/tests/postgrest_setup.sql
+      - name: Test PostgREST HTTP JWT RLS and audited RPC
+        run: |
+          docker run --rm -d --name phase2-postgrest --network host \
+            -e PGRST_DB_URI="postgres://authenticator:ci-disposable-postgrest-password@127.0.0.1:5432/postgres" \
+            -e PGRST_DB_SCHEMAS=public \
+            -e PGRST_DB_ANON_ROLE=anon \
+            -e PGRST_JWT_SECRET=ci-only-postgrest-fixture-secret-at-least-32-chars \
+            -e PGRST_DB_CHANNEL_ENABLED=false \
+            postgrest/postgrest:v14.18
+          trap 'docker logs phase2-postgrest || true; docker stop phase2-postgrest || true' EXIT
+          for i in $(seq 1 40); do
+            if curl -fsS http://127.0.0.1:3000/ >/dev/null 2>&1; then break; fi
+            sleep 1
+          done
+          node tests/postgrest-http.mjs
 
   bootstrap-vinext:
     if: github.event_name == 'push' && github.ref == 'refs/heads/feature/phase-1-foundation'
