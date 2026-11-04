@@ -33,7 +33,7 @@ begin
     v_url := v_link->>'url';
     -- Parse just the URL authority. A strict ASCII-DNS allowlist prevents
     -- direct RPC callers from bypassing the Next.js hostname checks.
-    v_authority := pg_catalog.substring(v_url from '^https?://([^/?#]+)');
+    v_authority := substring(v_url from '^https?://([^/?#]+)');
     if v_id !~* '^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$'
       or v_id = any(v_seen)
       or length(btrim(v_link->>'title'))=0 or length(v_link->>'title')>100
