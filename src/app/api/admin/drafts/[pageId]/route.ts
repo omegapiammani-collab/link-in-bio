@@ -2,7 +2,6 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getOwner } from '@/lib/auth/owner';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { isUuid, normalizeDraftDocument } from '@/lib/domain/draft-contract.mjs';
-import { updateExistingDraftCas } from '@/lib/domain/draft-cas.mjs';
 
 type Params = { params: Promise<{ pageId: string }> };
 const noStore = { 'Cache-Control': 'no-store, private' };
@@ -52,10 +51,20 @@ export async function PATCH(request: NextRequest, { params }: Params) {
   try { document = normalizeDraftDocument(input.document); }
   catch { return reply({ error: 'document_invalid' }, 422); }
   const db = await createSupabaseServerClient();
-  const result = await updateExistingDraftCas(db, pageId, expectedRevision, document);
-  if (!result.ok) {
-    return reply({ error: result.kind === 'conflict_or_missing' ? 'revision_conflict' : 'save_failed' },
-      result.kind === 'conflict_or_missing' ? 409 : 500);
+  // Stored procedure commits the revision update and its audit event atomically.
+  // A failed audit INSERT rolls back the draft update as well.
+  const { data, error } = await db.rpc('save_page_draft_audited', {
+    p_page_id: pageId,
+    p_expected_revision: expectedRevision,
+    p_document: document
+  });
+  if (error) {
+    if (error.code === 'P0001' && error.message === 'revision_conflict') {
+      return reply({ error: 'revision_conflict' }, 409);
+    }
+    if (error.code === '42501') return reply({ error: 'forbidden' }, 403);
+    return reply({ error: 'save_failed' }, 500);
   }
-  return reply({ revision: result.revision }, 200);
+  if (data !== expectedRevision + 1) return reply({ error: 'invalid_server_response' }, 502);
+  return reply({ revision: data }, 200);
 }
