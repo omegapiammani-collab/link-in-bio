@@ -145,6 +145,80 @@ const remains = await req(view, { token:owner.token });
 assert.equal(remains.status, 200, 'Non-Owner delete removed Owner file');
 assert.equal(digest(remains.bytes), digest(image));
 
+// On the shared database, the very same GoTrue JWT must also authorize the
+// project's audited draft RPC through PostgREST, proving Auth + Storage +
+// database API agree on Owner identity without a synthetic copy of auth.users.
+if (process.env.SHARED_GOTRUE_STORAGE_DB === 'true') {
+  const api = 'http://127.0.0.1:3000';
+  const document = { name:'Shared Stack Profile', description:'', links:[] };
+  async function rpc(name, token, payload) {
+    const response = await fetch(api+'/rpc/'+name,{
+      method:'POST',
+      headers:{
+        accept:'application/json',
+        'content-type':'application/json',
+        ...(token ? { authorization:'Bearer '+token } : {})
+      },
+      body:JSON.stringify(payload)
+    });
+    const raw=await response.text();
+    let value; try{value=JSON.parse(raw);}catch{value=raw;}
+    return { status:response.status,value };
+  }
+  const anonCreate=await rpc('create_page_draft_audited',null,
+    {p_slug:'shared-anon',p_document:document});
+  assert.ok([401,403].includes(anonCreate.status),JSON.stringify(anonCreate));
+  const otherCreate=await rpc('create_page_draft_audited',nonOwner.token,
+    {p_slug:'shared-intruder',p_document:document});
+  assert.equal(otherCreate.status,403,JSON.stringify(otherCreate));
+
+  const createdPage=await rpc('create_page_draft_audited',owner.token,
+    {p_slug:'shared-owner',p_document:document});
+  assert.ok(createdPage.status>=200&&createdPage.status<300,
+    'GoTrue Owner create RPC: '+JSON.stringify(createdPage));
+  assert.equal(createdPage.value?.[0]?.revision,1,
+    JSON.stringify(createdPage.value));
+  const pageId=createdPage.value[0].page_id;
+
+  const savedDraft=await rpc('save_page_draft_audited',owner.token,{
+    p_page_id:pageId,p_expected_revision:1,
+    p_document:{...document,name:'Shared Owner Revised'}
+  });
+  assert.equal(savedDraft.status,200,JSON.stringify(savedDraft));
+  assert.equal(savedDraft.value,2,'audited save should increment revision');
+
+  const conflict=await rpc('save_page_draft_audited',owner.token,{
+    p_page_id:pageId,p_expected_revision:1,p_document:document
+  });
+  assert.ok([400,409].includes(conflict.status),
+    'stale draft save must fail closed: '+JSON.stringify(conflict));
+  const deniedSave=await rpc('save_page_draft_audited',nonOwner.token,{
+    p_page_id:pageId,p_expected_revision:2,p_document:document
+  });
+  assert.equal(deniedSave.status,403,JSON.stringify(deniedSave));
+  const hiddenPublish=await rpc('publish_draft_snapshot',owner.token,{
+    p_page_id:pageId,p_expected_revision:2
+  });
+  assert.equal(hiddenPublish.status,404,JSON.stringify(hiddenPublish));
+
+  async function readDraft(token){
+    const r=await fetch(api+'/page_drafts?select=page_id,revision',{
+      headers:token?{authorization:'Bearer '+token}:{}
+    });
+    const value=await r.json();return {status:r.status,value};
+  }
+  const ownRows=await readDraft(owner.token);
+  assert.equal(ownRows.status,200,JSON.stringify(ownRows));
+  assert.ok(ownRows.value.some(row=>row.page_id===pageId&&row.revision===2),
+    'saved revision not visible to actual Owner');
+  const foreignRows=await readDraft(nonOwner.token);
+  assert.equal(foreignRows.status,200,JSON.stringify(foreignRows));
+  assert.ok(!foreignRows.value.some(row=>row.page_id===pageId),
+    'RLS leaked shared-database draft to Non-Owner');
+
+  console.log('PASS: same real GoTrue JWT -> Storage HTTP AND shared PostgREST draft RPC/RLS');
+}
+
 console.log(
   'PASS: real GoTrue HTTP signup/login/getUser -> signed JWT -> actual Storage HTTP file upload/read/sign/deny'
 );
