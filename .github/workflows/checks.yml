@@ -1,0 +1,18 @@
+# Minimal default-branch registration for the Phase 2 Checks workflow.
+# To run the full validation suite, select branch feature/phase-2-editor-foundation
+# in Actions > Checks > Run workflow. Never deploys or modifies Production.
+name: Checks
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+permissions:
+  contents: read
+jobs:
+  register-workflow:
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Register Checks workflow on default branch
+        run: echo "Default-branch CI registration only. Phase 2 tests run from feature/phase-2-editor-foundation."
