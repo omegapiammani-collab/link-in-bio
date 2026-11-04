@@ -32,11 +32,15 @@ export async function PATCH(request: NextRequest, { params }: Params) {
   const origin = request.headers.get('origin');
   if (!origin || origin !== request.nextUrl.origin) return reply({ error: 'origin_forbidden' }, 403);
   const declaredSize = Number(request.headers.get('content-length') ?? 0);
-  if (declaredSize > 32768) return reply({ error: 'payload_too_large' }, 413);
+  if (!Number.isFinite(declaredSize) || declaredSize < 0 || declaredSize > 32768) {
+    return reply({ error: 'payload_too_large' }, 413);
+  }
   let raw: string;
   try { raw = await request.text(); }
   catch { return reply({ error: 'invalid_body' }, 400); }
-  if (raw.length > 32768) return reply({ error: 'payload_too_large' }, 413);
+  if (new TextEncoder().encode(raw).length > 32768) {
+    return reply({ error: 'payload_too_large' }, 413);
+  }
   let body: unknown;
   try { body = JSON.parse(raw); }
   catch { return reply({ error: 'invalid_json' }, 400); }
