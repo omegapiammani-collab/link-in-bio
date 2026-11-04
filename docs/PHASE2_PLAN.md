@@ -118,3 +118,10 @@
 - [x] Added unit checks for flagging, authentication, query bounding and read-only behavior, plus three real PostgREST RLS HTTP assertions covering Owner, Non-Owner and anonymous list access.
 - [ ] Full official Supabase Auth + SSR cookie session + Storage integration and migrations 0001–0004 have not yet been exercised together in an isolated Supabase stack. These are still prerequisites to enabling hosted writes or public publishing.
 - [ ] No migration or writes to hosted Supabase, no production deployment, and no merge to main.
+
+## Owner authorization identity hardening — 4 November 2026
+
+- [x] Added pure `src/lib/auth/owner-policy.mjs` requiring a valid RFC 4122 variant/version UUID for `OWNER_AUTH_USER_ID`; rejects malformed lookalikes, placeholders, unset values and whitespace rather than accepting any 36-character string of dashes/hex.
+- [x] Updated the server `getOwner()` helper to call `supabase.auth.getUser()` and apply the shared fail-closed identity matcher; rejects authentication errors or different user IDs.
+- [x] Added unit regressions in `tests/owner-policy.test.mjs` for malformed config, case-insensitive UUID comparison, non-owner sessions, and failed auth responses.
+- [ ] This change does **not** constitute full Supabase Auth HTTP/cookie/OAuth integration or full Storage recovery acceptance. Existing production feature flags remain disabled.
