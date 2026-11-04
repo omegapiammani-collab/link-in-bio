@@ -1,22 +1,15 @@
 'use client';
 
 import { useState } from 'react';
+import { validExternalUrl } from '@/lib/domain/draft-contract.mjs';
 
 type LinkDraft = { id: string; title: string; url: string; active: boolean };
-const INITIAL_LINKS: LinkDraft[] = [{ id: 'sample-1', title: 'เว็บไซต์ของฉัน', url: 'https://example.com', active: true }];
+const INITIAL_LINKS: LinkDraft[] = [{ id: 'd50ebcde-70cf-4e98-9efe-72e467975364', title: 'เว็บไซต์ของฉัน', url: 'https://example.com', active: true }];
 
 function validateLink(url: string): string | null {
-  const value = url.trim();
-  if (!value || value.length > 2048) return 'กรุณากรอก URL ที่มีความยาวไม่เกิน 2,048 ตัวอักษร';
-  try {
-    const parsed = new URL(value);
-    if (!['https:', 'http:'].includes(parsed.protocol)) return 'รองรับเฉพาะลิงก์ http และ https';
-    if (parsed.username || parsed.password) return 'URL ต้องไม่มีข้อมูลเข้าสู่ระบบ';
-    if (!parsed.hostname.includes('.')) return 'กรุณากรอกชื่อโดเมนที่ถูกต้อง';
-    return null;
-  } catch {
-    return 'รูปแบบ URL ไม่ถูกต้อง';
-  }
+  return validExternalUrl(url)
+    ? null
+    : 'กรุณาใช้ URL http/https ของโดเมนสาธารณะที่ถูกต้อง (ไม่รองรับ IP หรือโดเมนภายใน)';
 }
 
 export function DraftEditor() {
