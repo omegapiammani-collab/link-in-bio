@@ -114,6 +114,50 @@ begin
 end;
 $test$;
 
+-- An authenticated non-owner must not edit a draft owned by the Owner.
+select set_config('request.jwt.claim.sub','bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',false);
+do $test$
+declare denied boolean := false;
+begin
+  begin
+    perform public.save_page_draft_audited(
+      (select id from public.pages where slug='test-page'),2,
+      '{"name":"Intruder","description":"","links":[]}'::jsonb);
+  exception when insufficient_privilege then denied := true;
+  end;
+  if not denied then raise exception 'non-owner save unexpectedly succeeded'; end if;
+end;
+$test$;
+
+select set_config('request.jwt.claim.sub','aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',false);
+-- Direct RPC calls must be rejected just like the application API validation.
+do $test$
+declare
+  v_url text;
+  v_doc jsonb;
+  denied boolean;
+  blocked text[] := array[
+    'http://127.0.0.1','http://2130706433','http://[::1]',
+    'https://user:pass@example.org','http://router.local',
+    'https://example.test','https://example.org.',
+    'https://bad..example.org','https://example.org\evil'
+  ];
+begin
+  foreach v_url in array blocked loop
+    denied := false;
+    v_doc := jsonb_build_object('name','Test','description','',
+      'links',jsonb_build_array(jsonb_build_object(
+        'id','8c4eb157-fac9-430c-8f47-0a112922671d',
+        'title','Blocked','url',v_url,'active',true)));
+    begin
+      perform * from public.create_page_draft_audited('blocked-link',v_doc);
+    exception when invalid_parameter_value then denied := true;
+    end;
+    if not denied then raise exception 'unsafe URL accepted: %',v_url; end if;
+  end loop;
+end;
+$test$;
+
 reset role;
 set role anon;
 do $test$
