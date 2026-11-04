@@ -10,7 +10,7 @@ import { createServerClient } from '@supabase/ssr';
 
 const gatewayPort=54321, appPort=3100;
 const base='http://127.0.0.1:'+gatewayPort;
-const app='http://127.0.0.1:'+appPort;
+const app='http://localhost:'+appPort;
 const ownerPassword='ci-only-ValidPassword-123456!';
 const key='sb_publishable_ci_disposable_not_real';
 const routes=[
@@ -103,7 +103,7 @@ const env={
   ...process.env,
   NODE_ENV:'production',
   PORT:String(appPort),
-  HOSTNAME:'127.0.0.1',
+  HOSTNAME:'localhost',
   NEXT_PUBLIC_SUPABASE_URL:base,
   NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY:key,
   OWNER_AUTH_USER_ID:ownerId,
@@ -111,7 +111,7 @@ const env={
   PHASE2_DRAFT_WRITE_ENABLED:'true',
   PHASE2_PAGE_LIST_ENABLED:'true'
 };
-const server=spawn(process.execPath,['node_modules/next/dist/bin/next','start','-p',String(appPort),'-H','127.0.0.1'],{
+const server=spawn(process.execPath,['node_modules/next/dist/bin/next','start','-p',String(appPort),'-H','localhost'],{
   env,stdio:['ignore','pipe','pipe']
 });
 let serverOutput='';
