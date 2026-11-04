@@ -1,6 +1,6 @@
 -- Real migration compatibility test using disposable PostgreSQL 17, no hosted DB.
--- Emulate ONLY Supabase's auth.users and auth.uid() prerequisites; all public
--- application tables, constraints, policies and RPCs are the real migrations.
+-- Supabase-owned Auth/Storage prerequisites are simulated; all six application
+-- migration SQL files are loaded unchanged. No Supabase HTTP service is involved.
 -- PostgreSQL roles are cluster-wide and already exist from the preceding fixture.
 create schema auth;
 create table auth.users (id uuid primary key);
@@ -9,7 +9,11 @@ as $$ select nullif(current_setting('request.jwt.claim.sub', true), '')::uuid; $
 grant usage on schema auth to authenticated;
 grant execute on function auth.uid() to authenticated;
 
+\i /work/tests/isolated_supabase_prerequisites.sql
 \i /work/supabase/migrations/0001_initial_schema.sql
+\i /work/supabase/migrations/0002_restrict_rls_helper.sql
+\i /work/supabase/migrations/0003_foreign_key_indexes.sql
+\i /work/supabase/migrations/0004_harden_publishing_audit_and_media.sql
 \i /work/supabase/migrations/0005_audited_draft_transactions.sql
 
 -- Bootstrap exactly one real referenced Owner ID using privileged connection.
@@ -78,4 +82,36 @@ end;
 $check$;
 reset role;
 
-select 'PASS: real 0001 + 0005 migrations, constraints, Owner RLS, audited CAS' as result;
+-- Exercise real migration 0004 Storage policies using disposable stand-in
+-- Storage tables. This checks PostgreSQL RLS only, not Storage HTTP.
+set role authenticated;
+select set_config('request.jwt.claim.sub', 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', false);
+do $storage$
+declare v_id uuid; v_denied boolean:=false;
+begin
+ if not exists(select 1 from storage.buckets where id='link-in-bio-media'
+    and public=false and file_size_limit=5242880
+    and allowed_mime_types = array['image/jpeg','image/png','image/webp','image/gif']::text[])
+ then raise exception 'private media bucket migration mismatch'; end if;
+ insert into storage.objects(bucket_id,name) values('link-in-bio-media','owner/photo.png')
+ returning id into v_id;
+ if not exists(select 1 from storage.objects where id=v_id) then
+   raise exception 'owner storage RLS policy rejected access'; end if;
+end;
+$storage$;
+select set_config('request.jwt.claim.sub', 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb', false);
+do $storage$
+declare v_denied boolean:=false;
+begin
+ if (select count(*) from storage.objects) <> 0 then
+   raise exception 'non-owner can list private media objects'; end if;
+ begin
+  insert into storage.objects(bucket_id,name) values('link-in-bio-media','intruder.png');
+ exception when insufficient_privilege then v_denied:=true;
+ end;
+ if not v_denied then raise exception 'non-owner can insert media object'; end if;
+end;
+$storage$;
+reset role;
+
+select 'PASS: actual migrations 0001-0005, Owner draft CAS and Storage RLS' as result;
