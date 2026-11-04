@@ -44,7 +44,17 @@ No production changes, OAuth credentials, secrets, deployments, or account setti
 - [x] New isolated test project `hfsvnbbckfugrxugrnuc` created in Singapore on the existing Free Organization; quoted project cost USD 0/month. Existing `mmbhuxiejfqipttyujop` remains separate and untouched.
 - [x] Read-only checks: test project ACTIVE_HEALTHY, no application public tables, no applied project migrations and no current security-advisor findings in this empty state.
 - [x] Added fail-closed offline staging configuration checks in `scripts/verify_phase2_staging_env.mjs` and documented an approval-gated sequence in `docs/PHASE2_STAGING_PREP.md`.
-- [ ] Hosted test migrations 0001–0007, Google OAuth and dedicated Cloudflare Worker remain **not applied / not deployed**, pending separate approval.
+- [ ] Hosted test migrations 0001–0007 **applied after explicit user approval**; Google OAuth and dedicated Cloudflare Worker remain **unconfigured / not deployed**, pending separate approval.
+
+## Hosted *isolated test* migrations and post-install review — 4 November 2026
+
+- [x] Applied `0001_initial_schema` through `0007_staged_publication` in order **only to** Supabase test project `hfsvnbbckfugrxugrnuc`; verified all seven recorded in its migration history. No migration was applied to Production `mmbhuxiejfqipttyujop`.
+- [x] Fixed migration `0002` on the feature branch to conditionally restrict the legacy `public.rls_auto_enable()` helper when present; fresh Supabase does not have that helper.
+- [x] Checked nine application tables in `public` have RLS enabled, all are empty, Owner bootstrap has not happened, private media bucket is not public, and initial reader returns no profile.
+- [x] Checked `app_private.release_settings` has one row with `publish_enabled=false` and `public_read_enabled=false`; `anon` has no `USAGE` privilege on `app_private`, no table `SELECT`, no publish RPC privilege; `authenticated` has no table `UPDATE` privilege.
+- [ ] **Security review hold:** metadata advisor reported RLS disabled on private `app_private.release_settings`. It is **not** publicly accessible by current grants, but the checker raises a critical warning. Do **not** automatically enable RLS without reviewing policy/function semantics and obtaining explicit authorization. Suggested change for explicit review: `ALTER TABLE app_private.release_settings ENABLE ROW LEVEL SECURITY;`. Do not mark this resolved yet. See [Supabase RLS documentation](https://supabase.com/docs/guides/database/postgres/row-level-security).
+- [ ] **Security review hold:** Supabase advisor flags `SECURITY DEFINER` functions `public.read_published_profile(text)` (anon and authenticated) and `public.publish_page_checked(uuid,bigint,boolean)` (authenticated). They are intentional narrow RPCs, and are currently gated by OFF private release settings; nevertheless review security definer, database grants and direct-RPC behavior before enabling the release. See [Supabase database linter](https://supabase.com/docs/guides/database/database-linter).
+- [ ] Google OAuth test provider/Owner bootstrap, dedicated Cloudflare staging Worker and public rollout remain unconfigured.
 
 ## Unmet external / release-specific gates
 
