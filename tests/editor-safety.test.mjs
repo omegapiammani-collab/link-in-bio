@@ -15,12 +15,12 @@ test('existing draft warns on full navigation only when locally dirty', () => {
   assert.match(editor, /event\.returnValue = ''/);
 });
 
-test('save and reload mutually exclude overlapping requests, and conflict blocks saving', () => {
+test('save, publish and reload mutually exclude overlapping requests; conflict blocks saving', () => {
   assert.match(editor, /requestInFlight = useRef\(false\)/);
   assert.match(editor, /!dirty \|\| requestInFlight\.current\) return/);
   assert.match(editor, /saving \|\| loading \|\| requestInFlight\.current\) return/);
-  assert.equal((editor.match(/requestInFlight\.current = true;/g) || []).length, 2);
-  assert.equal((editor.match(/requestInFlight\.current = false;/g) || []).length, 2);
+  assert.equal((editor.match(/requestInFlight\.current = true;/g) || []).length, 3);
+  assert.equal((editor.match(/requestInFlight\.current = false;/g) || []).length, 3);
   assert.match(editor, /setConflicted\(true\)/);
   assert.match(editor, /setConflicted\(false\)/);
   assert.match(page, /key=\{draftPageId \?\? 'preview'\}/);
