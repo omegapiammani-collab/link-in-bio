@@ -32,6 +32,7 @@ CREATE FUNCTION public.rls_auto_enable() RETURNS event_trigger
 \i /work/supabase/migrations/0004_harden_publishing_audit_and_media.sql
 \i /work/supabase/migrations/0005_audited_draft_transactions.sql
 \i /work/supabase/migrations/0006_immutable_publish_core.sql
+\i /work/supabase/migrations/0007_staged_publication.sql
 
 -- The API connects with a limited authenticator role, not postgres.
 DO $api$
