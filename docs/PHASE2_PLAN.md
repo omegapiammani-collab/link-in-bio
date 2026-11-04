@@ -132,3 +132,13 @@
 - [x] Fail-closed handling now covers Auth SDK exceptions, network faults and server client configuration errors without granting any Owner privileges.
 - [x] Added offline tests for valid Owner, other users, expired/errored responses, thrown Auth errors, missing clients and prevention of `getSession()` use in permission checks.
 - [ ] Still requires actual Supabase Auth HTTP + SSR cookie + Google OAuth E2E tests in a disposable stack before any hosted write mode is enabled.
+
+## Editor request locking and unsaved-change safeguards — 4 November 2026
+
+- [x] Added an in-flight ref lock to suppress rapid duplicate draft saves and prevent a reload while a save is pending (and vice versa). Existing revision compare-and-swap and 409 conflict state remain authoritative.
+- [x] Added a native browser `beforeunload` warning only for **existing drafts with unsaved changes**; the in-memory-only preview is not interrupted. The Owner still explicitly confirms reload before discarding unsaved edits.
+- [x] Keyed the Editor component by its page UUID to prevent stale local revision/document state from leaking when navigating between different draft pages.
+- [x] Hardened the PATCH endpoint to enforce the 32-KiB limit on actual UTF-8 request bytes (not JavaScript code unit counts), with malformed declared payload lengths rejected.
+- [x] Added `tests/editor-safety.test.mjs` regression checks for these guards.
+- [ ] Browser navigation through client-side router links and actual authenticated Supabase SSR/Google OAuth still require isolated end-to-end testing. The browser's default unload dialog text is controlled by the browser.
+- [ ] All hosted write flags remain off, migration 0005 unapplied to hosted Supabase, and no public publishing/production rollout is authorized.
