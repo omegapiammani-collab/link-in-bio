@@ -72,7 +72,20 @@ as $read$
     'slug', p.slug,
     'name', v.snapshot_json #>> '{profile,name}',
     'description', v.snapshot_json #>> '{profile,description}',
-    'links', coalesce(v.snapshot_json #> '{profile,links}','[]'::jsonb)
+    'links', coalesce((
+      select pg_catalog.jsonb_agg(
+        pg_catalog.jsonb_build_object(
+          'id', entry.link->>'id',
+          'title', entry.link->>'title',
+          'url', entry.link->>'url',
+          'active', true
+        ) order by entry.ordinality
+      )
+      from pg_catalog.jsonb_array_elements(
+        coalesce(v.snapshot_json #> '{profile,links}','[]'::jsonb)
+      ) with ordinality as entry(link, ordinality)
+      where entry.link->>'active' = 'true'
+    ), '[]'::jsonb)
   )
   from public.pages p
   inner join public.page_versions v
