@@ -49,8 +49,8 @@ begin
   from public.page_blocks b
   where b.page_id = p_page_id and b.deleted_at is null;
 
-  select coalesce(max(version_number),0)
-    into v_last_version from public.page_versions where page_id=p_page_id;
+  select coalesce(max(existing.version_number),0)
+    into v_last_version from public.page_versions existing where existing.page_id=p_page_id;
   if v_last_version >= 2147483647 then
     raise exception 'version_limit' using errcode='22023';
   end if;
