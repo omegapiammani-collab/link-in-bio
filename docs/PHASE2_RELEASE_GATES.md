@@ -30,6 +30,15 @@ apply hosted migrations, use a paid tier, or merge into `main`.
   rejection of Non-Owner, cross-origin, spoofed PNG and traversal attempts,
   and successful byte-identical signed retrieval. Both features default off.
 
+## Manual Google OAuth verification on existing Phase 1 Preview — 4 November 2026
+
+- [x] **Owner account, existing Preview:** user-supplied screenshot showed a protected `/admin` dashboard identifying an authenticated Owner at `https://link-in-bio-preview.omega-piammani.workers.dev/admin`. This demonstrates Owner access, not by itself full PKCE exchange instrumentation.
+- [x] **Logout, existing Preview:** user-supplied screenshots showed return to `/login` and subsequent attempted Admin navigation remaining on Login without signing in.
+- [x] **Non-Owner Google account, existing Preview (user-reported):** user stated they tested with a different Google account in Edge InPrivate and **Admin access was denied**. Record as a manual user attestation, not a screenshot-backed or tool-observed result; do not store identity, tokens or personal details.
+- [ ] **Phase 2 parity is still OPEN:** the existing Preview serves an older Phase 1 build, so none of these manual passes independently proves the un-deployed Phase 2 Google OAuth callback, Owner denial or Cloudflare runtime parity. Perform equivalent tests on an expressly approved, separate Phase 2 test deployment before closing its acceptance gate.
+
+No production changes, OAuth credentials, secrets, deployments, or account settings were made to document this evidence.
+
 ## Unmet external / release-specific gates
 
 - [ ] **Real Google OAuth happy-path + PKCE callback** tested end-to-end with
