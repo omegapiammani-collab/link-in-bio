@@ -417,7 +417,7 @@ jobs:
       - name: Verify real GoTrue and Storage HTTP share one temporary PostgreSQL database
         run: |
           mkdir -p "$RUNNER_TEMP/storage-shared-files"
-          trap 'docker logs phase2-shared-storage || true; docker rm -f phase2-shared-storage || true; docker logs phase2-shared-gotrue || true; docker rm -f phase2-shared-gotrue || true' EXIT
+          trap 'docker logs phase2-shared-postgrest || true; docker rm -f phase2-shared-postgrest || true; docker logs phase2-shared-storage || true; docker rm -f phase2-shared-storage || true; docker logs phase2-shared-gotrue || true; docker rm -f phase2-shared-gotrue || true' EXIT
           docker run --rm --network host \
             -e PGPASSWORD=ci-only-local-password postgres:17 \
             psql -h 127.0.0.1 -U postgres -d storage_http_ci \
@@ -480,6 +480,20 @@ jobs:
             -v "$PWD:/work:ro" postgres:17 \
             psql -h 127.0.0.1 -U postgres -d storage_http_ci \
               -v ON_ERROR_STOP=1 -f /work/tests/shared_gotrue_storage_schema.sql
+          docker run -d --name phase2-shared-postgrest --network host \
+            -e "PGRST_DB_URI=postgres://authenticator:ci-disposable-postgrest-password@127.0.0.1:5432/storage_http_ci" \
+            -e PGRST_DB_SCHEMAS=public \
+            -e PGRST_DB_ANON_ROLE=anon \
+            -e PGRST_JWT_SECRET=ci-only-real-storage-signing-secret-at-least-32-chars \
+            -e PGRST_DB_CHANNEL_ENABLED=false \
+            postgrest/postgrest:v14.18
+          rest_ready=0
+          for i in $(seq 1 40); do
+            if curl -fsS http://127.0.0.1:3000/ >/dev/null 2>&1; then rest_ready=1; break; fi
+            if ! docker inspect -f '{{.State.Running}}' phase2-shared-postgrest 2>/dev/null | grep -q true; then break; fi
+            sleep 1
+          done
+          test "$rest_ready" -eq 1 || { echo "Shared PostgREST failed health check" >&2; exit 1; }
           SHARED_GOTRUE_STORAGE_DB=true node tests/gotrue-storage-http.mjs
 
   bootstrap-vinext:
