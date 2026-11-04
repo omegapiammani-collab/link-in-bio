@@ -28,5 +28,9 @@ GRANT CONNECT ON DATABASE gotrue_ci TO authenticator;
 GRANT USAGE ON SCHEMA public TO anon,authenticated;
 GRANT USAGE ON SCHEMA auth TO authenticated;
 GRANT EXECUTE ON FUNCTION auth.uid() TO authenticated;
+GRANT USAGE ON SCHEMA storage TO authenticated;
+-- storage.objects has Owner-gated RLS from migration 0004. It is exposed
+-- in this disposable PostgREST instance ONLY to exercise its policy over HTTP.
+REVOKE ALL ON storage.objects FROM anon;
 -- Do not grant publishing to either API role; do not override GoTrue's auth.uid().
 SELECT 'PASS: real GoTrue auth.users and app migrations 0001-0006 in same database' as result;
