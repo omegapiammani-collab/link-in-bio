@@ -133,3 +133,8 @@ revoke all on function app_private.reject_version_mutation()
   from public,anon,authenticated;
 -- No GRANT and NO public.publish_* RPC or UI. Tests call the private function
 -- via a privileged *disposable* PostgreSQL connection only.
+
+-- Only audited SECURITY DEFINER transactions may write versions or audit.
+-- Migration 0001 originally allowed authenticated direct INSERT on both.
+revoke insert on public.page_versions from authenticated;
+revoke insert on public.audit_events from authenticated;
