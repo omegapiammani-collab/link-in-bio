@@ -156,3 +156,13 @@
 - [x] Switched the disposable PostgREST HTTP integration to this **actual schema database**, rather than the earlier hand-crafted base-table fixture. CI [#41772868572](https://github.com/omegapiammani-collab/link-in-bio/actions/runs/41772868572) passed both the real-schema migration step and the HTTP JWT/RLS/RPC step.
 - [ ] This is **not** a complete Supabase local stack: `auth.users`/`auth.uid()` remain synthetic, and migrations `0002`–`0004`, Supabase Auth/SSR cookies, Google OAuth, Storage, and full DR are not covered by this compatibility check. Do not infer production readiness.
 - [ ] Keep migration 0005 **unapplied** to the hosted project, all write flags disabled in production, and do not deploy or merge to `main`.
+
+## Staged immutable publishing core — 4 November 2026
+
+- [x] Added **unapplied** `supabase/migrations/0006_immutable_publish_core.sql`. Its internal-only `app_private.publish_draft_snapshot(page_id,expected_revision)` requires authenticated Owner identity, locks page and draft, checks revision, validates profile, captures profile/theme/socials/ordered blocks, inserts a new version, atomically advances the page's published pointer and writes an audit record. A failure rolls back the entire transaction.
+- [x] Published snapshots preserve the existing page visibility as **unlisted**, even when status becomes `published`. There is **no public renderer**, no exposed `public.publish_*` RPC, no authorized EXECUTE grant to authenticated, and **no Publish UI or enabled release feature flag**.
+- [x] Added a database trigger rejecting UPDATE/DELETE on `page_versions`, plus revoked direct authenticated INSERT on `page_versions` and `audit_events`; historical snapshot and audit insertions must pass through privileged audited transactions.
+- [x] Draft save is allowed on both draft and already-published pages, keeping the currently published snapshot unchanged until a separate authorized publish. Successive publish calls retain version ancestry and monotonic version numbers.
+- [x] Added `tests/immutable_publish_fixture.sql` exercising version pointers, archival immutability, stale-revision rejection, republishing after draft edits, Owner and Non-Owner restrictions, direct-insert denial and forced audit-failure rollback on the **real Phase 1 schema** in isolated PostgreSQL.
+- [x] Extended real PostgREST HTTP tests to assert that authenticated Owner cannot access the private publishing function over the public Data API.
+- [ ] Official Supabase Auth+Storage/SSR-cookie integration and migrations `0002`–`0004` remain unverified end-to-end; no hosted database migration, production deployment, release flag change, publishing UI, or `main` merge is authorized.
