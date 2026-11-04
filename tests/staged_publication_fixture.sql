@@ -1,6 +1,7 @@
 -- Run after the 0006 immutable publishing fixture on disposable PostgreSQL.
 \i /work/supabase/migrations/0007_staged_publication.sql
 \i /work/supabase/migrations/0008_secure_release_settings.sql
+\i /work/supabase/migrations/0009_private_privileged_rpc.sql
 
 -- Confirm the private release table is RLS-protected and inaccessible to API roles,
 -- and that the privileged gated RPC continues to see the default OFF switches.
@@ -14,10 +15,24 @@ begin
  end if;
  if pg_catalog.has_table_privilege('anon','app_private.release_settings','SELECT')
     or pg_catalog.has_table_privilege('authenticated','app_private.release_settings','UPDATE')
-    or pg_catalog.has_schema_privilege('anon','app_private','USAGE') then
+    then
   raise exception 'private release settings ACL leak';
  end if;
- if (select publish_enabled or public_read_enabled from app_private.release_settings where singleton) then
+ if not pg_catalog.has_schema_privilege('anon','app_private','USAGE') then
+  raise exception 'private invoker API bridge cannot call reader';
+ end if;
+ if pg_catalog.has_function_privilege('anon','app_private.publish_page_checked(uuid,bigint,boolean)','EXECUTE') then
+  raise exception 'anonymous can execute privileged private publisher';
+ end if;
+ if not pg_catalog.has_function_privilege('anon','app_private.read_published_profile(text)','EXECUTE') then
+  raise exception 'private reader bridge is not executable';
+ end if;
+ if exists(select 1 from pg_proc p join pg_namespace n on n.oid=p.pronamespace
+   where n.nspname='public' and p.proname in ('publish_page_checked','read_published_profile')
+     and p.prosecdef) then
+  raise exception 'public RPC retains privileged SECURITY DEFINER';
+ end if;
+  if (select publish_enabled or public_read_enabled from app_private.release_settings where singleton) then
   raise exception 'release gates started enabled';
  end if;
 end;
