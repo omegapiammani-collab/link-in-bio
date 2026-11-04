@@ -21,7 +21,7 @@ jobs:
       - name: Validate Cloudflare vinext production build
         run: npm run build:vinext
         env:
-          NEXT_PUBLIC_SUPABASE_URL: https://mmbhuxiejfqipttyujop.supabase.co
+          NEXT_PUBLIC_SUPABASE_URL: https://hfsvnbbckfugrxugrnuc.supabase.co
           NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: sb_publishable_test_only
           OWNER_AUTH_USER_ID: 00000000-0000-0000-0000-000000000000
 
