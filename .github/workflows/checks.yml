@@ -378,6 +378,7 @@ jobs:
             -e GOTRUE_EXTERNAL_EMAIL_ENABLED=true \
             -e GOTRUE_MAILER_AUTOCONFIRM=true \
             -e GOTRUE_JWT_AUD=authenticated \
+            -e GOTRUE_JWT_DEFAULT_GROUP_NAME=authenticated \
             -e GOTRUE_JWT_EXP=3600 \
             -e GOTRUE_JWT_SECRET=ci-only-real-storage-signing-secret-at-least-32-chars \
             supabase/gotrue:v2.197.0
