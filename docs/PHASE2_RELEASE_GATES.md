@@ -56,6 +56,14 @@ No production changes, OAuth credentials, secrets, deployments, or account setti
 - [ ] **Security review hold:** Supabase advisor flags `SECURITY DEFINER` functions `public.read_published_profile(text)` (anon and authenticated) and `public.publish_page_checked(uuid,bigint,boolean)` (authenticated). They are intentional narrow RPCs, and are currently gated by OFF private release settings; nevertheless review security definer, database grants and direct-RPC behavior before enabling the release. See [Supabase database linter](https://supabase.com/docs/guides/database/database-linter).
 - [ ] Google OAuth test provider/Owner bootstrap, dedicated Cloudflare staging Worker and public rollout remain unconfigured.
 
+## Security Hardening completed in isolated hosted Phase 2 Test — 4 November 2026
+
+- [x] User explicitly approved security hardening **only** for test project `hfsvnbbckfugrxugrnuc`. Applied `0008_secure_release_settings` after five primary CI jobs succeeded in [run #41802687268](https://github.com/omegapiammani-collab/link-in-bio/actions/runs/41802687268). Applied `0009_private_privileged_rpc` only after five primary CI jobs succeeded in [run #41803232591](https://github.com/omegapiammani-collab/link-in-bio/actions/runs/41803232591).
+- [x] Hosted test migration history confirms `0001`–`0009`. `app_private.release_settings` has RLS ON and **zero** API policies; `anon` cannot SELECT and `authenticated` cannot UPDATE the table. Its switches remain `publish_enabled=false` and `public_read_enabled=false`. Media bucket is private, Owner and app pages are empty.
+- [x] Privileged publishing and public snapshot implementations were moved into non-API `app_private`. Public API functions retain original signatures as `SECURITY INVOKER` wrappers. Direct SQL metadata checks confirm **zero** `SECURITY DEFINER` functions remaining among those two public RPCs; `anon` cannot execute public or private publisher; public reader returns no profile while release OFF.
+- [x] Post-migration Supabase Security Advisor shows **no WARN-level findings** for the previously exposed privileged RPCs. Only remaining **INFO**: `rls_enabled_no_policy` for `app_private.release_settings` — **intentional deny-by-default** under a non-exposed schema with explicit revoked table ACLs. [Supabase linter INFO](https://supabase.com/docs/guides/database/database-linter?lint=0008_rls_enabled_no_policy).
+- [ ] **Important:** Real Google OAuth on isolated hosted Test and independent direct hosted PostgREST attempts with Owner/NonOwner remain open. Offline CI covers actual PostgREST/JWT, but is not evidence of hosted Google OAuth authorization. Keep both DB release switches OFF and do not enable any Phase 2 runtime feature flags or deploy without distinct authorization.
+
 ## Unmet external / release-specific gates
 
 - [ ] **Real Google OAuth happy-path + PKCE callback** tested end-to-end with
