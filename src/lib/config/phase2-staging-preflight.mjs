@@ -8,7 +8,6 @@ const UUID=/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]
 const DANGEROUS_FLAGS=[
  'PHASE2_PAGE_CREATE_ENABLED',
  'PHASE2_DRAFT_WRITE_ENABLED',
- 'PHASE2_PAGE_LIST_ENABLED',
  'PHASE2_PUBLISH_ENABLED',
  'PHASE2_PUBLIC_RENDER_ENABLED',
  'PHASE2_MEDIA_UPLOAD_ENABLED',
@@ -27,6 +26,9 @@ export function validatePhase2StagingEnv(env){
  const owner=get('OWNER_AUTH_USER_ID');
  if(!UUID.test(owner)||owner==='00000000-0000-0000-0000-000000000000')
   errors.push('Provide the Phase 2 test Owner UUID from its own Auth users');
+ const listFlag=get('PHASE2_PAGE_LIST_ENABLED');
+ if(listFlag && listFlag!=='true' && listFlag!=='false')
+  errors.push('PHASE2_PAGE_LIST_ENABLED must be true, false, or absent');
  for(const name of DANGEROUS_FLAGS){
   if(get(name) && get(name)!=='false') errors.push(name+' must remain false for first rollout');
  }
