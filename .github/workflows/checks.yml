@@ -237,6 +237,72 @@ jobs:
           EXPECTED_RESTORED_OWNER_UUID="$expected_owner" node tests/gotrue-restored-login.mjs
           rm -f "$RUNNER_TEMP/phase2-gotrue-recovery.dump"
 
+  isolated-storage-http:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: ci-only-local-password
+          POSTGRES_DB: storage_http_ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d storage_http_ci"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Run actual Supabase Storage HTTP API with disposable file backend
+        run: |
+          mkdir -p "$RUNNER_TEMP/storage-binary-data"
+          docker run --rm --network host \
+            -e PGPASSWORD=ci-only-local-password postgres:17 \
+            psql -h 127.0.0.1 -U postgres -d storage_http_ci -v ON_ERROR_STOP=1 \
+              -c 'CREATE SCHEMA IF NOT EXISTS auth'
+          docker run -d --name phase2-storage-http --network host \
+            -e SERVER_PORT=5000 \
+            -e "DATABASE_URL=postgresql://postgres:ci-only-local-password@127.0.0.1:5432/storage_http_ci?sslmode=disable" \
+            -e DB_INSTALL_ROLES=true \
+            -e DB_SUPER_USER=postgres \
+            -e AUTH_JWT_SECRET=ci-only-real-storage-signing-secret-at-least-32-chars \
+            -e AUTH_JWT_ALGORITHM=HS256 \
+            -e STORAGE_BACKEND=file \
+            -e STORAGE_FILE_BACKEND_PATH=/var/lib/storage \
+            -e FILE_STORAGE_BACKEND_PATH=/var/lib/storage \
+            -e STORAGE_PUBLIC_URL=http://127.0.0.1:5000 \
+            -e TENANT_ID=ci-only \
+            -e REGION=local \
+            -e FILE_SIZE_LIMIT=5242880 \
+            -e GLOBAL_S3_BUCKET=ci-only-storage \
+            -e IMAGE_TRANSFORMATION_ENABLED=false \
+            -e ENABLE_IMAGE_TRANSFORMATION=false \
+            -v "$RUNNER_TEMP/storage-binary-data:/var/lib/storage" \
+            supabase/storage-api:v1.81.0
+          trap 'docker logs phase2-storage-http || true; docker rm -f phase2-storage-http || true' EXIT
+          ready=0
+          for i in $(seq 1 60); do
+            if curl -fsS http://127.0.0.1:5000/status >/dev/null 2>&1; then ready=1; break; fi
+            if ! docker inspect -f '{{.State.Running}}' phase2-storage-http 2>/dev/null | grep -q true; then break; fi
+            sleep 1
+          done
+          if [ "$ready" -ne 1 ]; then
+            echo "Isolated Storage API failed health check" >&2
+            exit 1
+          fi
+          docker run --rm --network host \
+            -e PGPASSWORD=ci-only-local-password \
+            -v "$PWD:/work:ro" postgres:17 \
+            psql -h 127.0.0.1 -U postgres -d storage_http_ci \
+              -v ON_ERROR_STOP=1 -f /work/tests/storage_api_real_schema.sql
+          node tests/storage-api-http.mjs
+
   bootstrap-vinext:
     if: github.event_name == 'push' && github.ref == 'refs/heads/feature/phase-1-foundation'
     runs-on: ubuntu-latest
