@@ -109,3 +109,12 @@
 - [x] [GitHub Actions #41770136566](https://github.com/omegapiammani-collab/link-in-bio/actions/runs/41770136566) successfully completed the isolated HTTP assertion step (**15 passes**) and the offline PG17 audit/rollback tests.
 - [ ] This is **genuine PostgREST HTTP/JWT/PostgreSQL-RLS testing**, but it is *not* the official Supabase local Auth stack: the fixture substitutes `auth.uid()` and synthetic auth roles. Full isolated Supabase Auth, SSR cookies, Google OAuth redirect, Storage and real migrations 0001–0004 remain separate acceptance gates.
 - [ ] Continue to leave all Phase 2 write flags disabled in hosted deployments and migration 0005 unapplied to hosted Supabase. Production deployment, paid plans and merge to main remain blocked.
+
+## Owner multi-page index — 4 November 2026
+
+- [x] Added a read-only, Owner-authenticated page index at `/admin/pages` plus `GET /api/admin/pages`, protected by the separate **disabled-by-default** `PHASE2_PAGE_LIST_ENABLED=true` flag.
+- [x] Queries only page metadata (`id`, `slug`, `status`, `visibility`, `updated_at`), excludes soft-deleted pages, uses a deterministic descending update order and caps results at 50. Private drafts and audit data are not returned by this index.
+- [x] The Owner dashboard shows a list navigation link only when the flag is enabled. Each draft's editor link is rendered only if `PHASE2_DRAFT_WRITE_ENABLED=true`; archived, trashed, or published versions cannot be edited through the listing.
+- [x] Added unit checks for flagging, authentication, query bounding and read-only behavior, plus three real PostgREST RLS HTTP assertions covering Owner, Non-Owner and anonymous list access.
+- [ ] Full official Supabase Auth + SSR cookie session + Storage integration and migrations 0001–0004 have not yet been exercised together in an isolated Supabase stack. These are still prerequisites to enabling hosted writes or public publishing.
+- [ ] No migration or writes to hosted Supabase, no production deployment, and no merge to main.
