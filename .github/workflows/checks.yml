@@ -163,7 +163,7 @@ jobs:
             -v ON_ERROR_STOP=1 -f /work/tests/gotrue_full_schema.sql
           docker run -d --name phase2-postgrest-gotrue --network host \
             -e "PGRST_DB_URI=postgres://authenticator:ci-disposable-postgrest-password@127.0.0.1:5432/gotrue_ci" \
-            -e PGRST_DB_SCHEMAS=public \
+            -e PGRST_DB_SCHEMAS=public,storage \
             -e PGRST_DB_ANON_ROLE=anon \
             -e PGRST_JWT_SECRET=ci-only-gotrue-jwt-secret-32-plus-chars \
             -e PGRST_DB_CHANNEL_ENABLED=false \
