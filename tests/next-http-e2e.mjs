@@ -32,6 +32,11 @@ const gateway=http.createServer(async(request,response)=>{
     delete headers.host;
     delete headers.connection;
     delete headers['content-length'];
+    // Supabase's API gateway recognizes a publishable key and forwards an
+    // anonymous PostgREST request. Our minimal CI gateway must do the same;
+    // PostgREST itself cannot validate a publishable-key bearer token.
+    if(prefix==='/rest/v1' && headers.authorization==='Bearer '+key)
+      delete headers.authorization;
     const upstream=await fetch(dest,{
       method:request.method,
       headers,
