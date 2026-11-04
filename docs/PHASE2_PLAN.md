@@ -76,3 +76,10 @@
 - [ ] **Migration is not yet tested on a real isolated Supabase PostgreSQL stack.** Source-level checks alone cannot prove SQL syntax, rollback behavior, privilege enforcement, 409 handling or RLS end-to-end.
 - [ ] Create a disposable Supabase environment, apply the migration only there, run Owner/Non-Owner and conflicting-writer integration tests, plus audit-INSERT failure rollback tests. Review SQL function privileges with Supabase security advisors.
 - [ ] No public renderer, actual publishing, production deployment, GitHub secret modification, paid tier, or merge to main.
+
+## Isolated PostgreSQL transaction exercise — 4 November 2026
+
+- [x] Added `tests/audited_transactions_fixture.sql` to run against the disposable PostgreSQL 17 Docker service already provided by GitHub Actions, without connecting to hosted Supabase.
+- [x] CI run [#41768046909](https://github.com/omegapiammani-collab/link-in-bio/actions/runs/41768046909) completed the `Test audited draft transactions in isolated PostgreSQL 17` step successfully, including SQL migration execution, synthetic Owner vs Non-Owner authorization, draft conflict, forced audit-failure rollback, and rejected direct draft UPDATE.
+- [ ] The fixture uses locally defined `auth.uid()` and ownership helper instead of full Supabase Auth/API/RLS; **a complete Supabase-stack integration test remains mandatory** before any hosted write flag can be enabled.
+- [ ] The application build and CI's overall result on this latest workflow must be inspected separately before marking all checks passed.
