@@ -71,3 +71,10 @@ The Supabase connector does not expose hosted Auth provider configuration APIs; 
 - To deploy, use an approved authenticated Wrangler/vinext build workflow (or appropriately permissioned CI) **after** test-specific publishable key and OAuth configuration. Initial Owner UUID may be an unrelated valid-format bootstrap placeholder that authorizes nobody; subsequently bind the actual verified test Google Auth user's ID. Never copy the Phase 1 Worker bindings, reuse its Supabase project, or publish its routes.
 - First staged deployment: all Phase 2 feature flags OFF and database private switches OFF. Then test /login, /admin Owner, InPrivate NonOwner, logout, and hosted direct RPC denial. No Production release or public profiles.
 
+
+## Cloudflare staging build trigger — 4 November 2026
+
+- Fresh post-restore Phase 2 GitHub Actions CI run [#41835001436](https://github.com/omegapiammani-collab/link-in-bio/actions/runs/41835001436) passed the five main jobs; `bootstrap-vinext` was skipped by design.
+- Separate Cloudflare Worker `link-in-bio-phase2-preview` is linked via Workers Builds to `feature/phase-2-editor-foundation` with `npm run build:vinext` and `npm run deploy:vinext`.
+- Four staging-specific build variable names and four matching runtime binding names were confirmed before this documentation-only push. Their values are managed in Cloudflare, not in source control.
+- Test Owner bootstrap UUID remains non-authorizing; release flags and hosted database switches must remain OFF. A successful Worker build alone does not establish Google OAuth or Owner access validation.
