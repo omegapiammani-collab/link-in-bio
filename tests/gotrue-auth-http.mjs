@@ -19,7 +19,7 @@ const isolatedFetch = async (input, init) => {
 function clientFixture() {
   const cookies = new Map();
   function client() {
-    return createServerClient(auth + '/auth/v1', apiKey, {
+    return createServerClient(auth, apiKey, {
       global: { fetch: isolatedFetch },
       cookies: {
         getAll: () => [...cookies].map(([name, value]) => ({ name, value })),
