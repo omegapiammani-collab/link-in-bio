@@ -22,3 +22,23 @@
 
 - No production launch, paid services, migration applied to live Supabase, phase-1 PR merge, or modifications to existing GitHub Secrets.
 - No claim that the editor persists changes or publishes pages.
+
+## Phase 2 second slice — draft persistence foundation (4 November 2026)
+
+### Implemented in this feature branch only
+
+- [x] Strict shared document contract for profile name, description and at most 20 link entries. Only external HTTP(S) URL syntax with no credentials, whitespace, local hostnames or numeric IPv4 literals is accepted; validated **server-side** on write. Unique valid UUID link IDs are enforced.
+- [x] Private route `GET/PATCH /api/admin/drafts/[pageId]`, deliberately **disabled by default** unless `PHASE2_DRAFT_WRITE_ENABLED=true` is explicitly set in an **isolated development environment**. The production Preview has not been configured to enable it.
+- [x] Route requires server-side verified Owner Google session, a valid page UUID, and same-origin on PATCH; rejects invalid JSON/oversized payloads, and sets no-store response headers. Uses existing RLS-authenticated Supabase SSR client, **not** service_role.
+- [x] Single atomic conditional UPDATE on existing `page_drafts` row requires exact `revision`; successful save increments revision, stale update receives HTTP 409, failed DB operation is 500. Unit tests include stale-write conflict and malformed documents.
+- [x] There is **no draft creation endpoint**, migration or UI save action enabled. Existing-page-only reads and updates are intentionally gated because a complete audited creation/publishing transaction and end-to-end RLS tests are still pending.
+
+### Next acceptance steps (not yet passed)
+
+1. Run read/write API integration tests against an isolated Supabase Stack (synthetic Owner and Non-Owner users, no live database), including 401/403, 409 conflict, and persistence.
+2. Add atomic Owner-only page+draft creation and block persistence; preserve revision guarantees across link order and content, without creating orphaned records on errors.
+3. Wire the UI to the draft API **only in an isolated test deployment**, implement save/refresh/conflict UX, and keep explicit publish disabled.
+4. Add append-only audit / immutable versioning with transactional SQL functions before enabling any hosted write path.
+5. Keep the user's deferred full Auth/Storage disaster recovery labeled as a **waived test, not a PASS** before any production release.
+
+**Safety controls:** No mutation of hosted Supabase, no GitHub Secrets changes, no production deployment, no merge to `main`, no paid tier.
