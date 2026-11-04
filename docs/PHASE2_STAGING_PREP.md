@@ -1,6 +1,6 @@
 # Phase 2 isolated staging — deployment preparation (not authorization)
 
-Date: 4 November 2026. **No hosted migration, deployment, Google OAuth settings change, or production mutation is authorized by this document.**
+Date: 4 November 2026. **Migration 0001–0007 was subsequently authorized and applied only on isolated Supabase Phase 2 test; this document does not authorize further deployments, OAuth settings changes, or Production mutations.**
 
 ## Verified read-only inventory
 
@@ -9,8 +9,8 @@ Date: 4 November 2026. **No hosted migration, deployment, Google OAuth settings 
 | Supabase original | `mmbhuxiejfqipttyujop`, eu-west-2, ACTIVE_HEALTHY. Do not modify. |
 | Supabase Phase 2 test | `hfsvnbbckfugrxugrnuc`, ap-southeast-1, ACTIVE_HEALTHY. Separate database and Auth. |
 | Phase 2 public Supabase API | `https://hfsvnbbckfugrxugrnuc.supabase.co` |
-| Phase 2 Supabase Free database | No application `public` tables and no applied project migrations as checked. |
-| Supabase security advisor | No current findings on the empty test project; re-check AFTER future migrations. |
+| Phase 2 Supabase Free database | Originally empty; nine application `public` tables created through approved migrations 0001–0007; all have RLS enabled. |
+| Supabase security advisor | Post-migration review: critical metadata warning for disabled RLS on private `app_private.release_settings` (not public by grants), plus intentional but security-sensitive `SECURITY DEFINER` RPCs. See release gates; review required. |
 | Existing Cloudflare Worker | `link-in-bio-preview`. Phase 1 Preview. Do not overwrite. |
 | Proposed separate Phase 2 Worker | `link-in-bio-phase2-preview` (**not created or deployed**). |
 | Proposed separate Phase 2 origin | `https://link-in-bio-phase2-preview.omega-piammani.workers.dev` (**not live**). |
@@ -18,7 +18,7 @@ Date: 4 November 2026. **No hosted migration, deployment, Google OAuth settings 
 
 ## Hold points requiring explicit approval
 
-1. **Supabase migrations**: after a distinct authorization, apply project SQL `0001` through `0007` in order **only** to project `hfsvnbbckfugrxugrnuc`, after checking the baseline Supabase-managed `auth` and `storage` schemas. Review the SQL and its effective privileges. Never target the original project.
+1. **Supabase migrations**: **Completed on 4 November 2026 under explicit authorization**: SQL `0001` through `0007` applied only to `hfsvnbbckfugrxugrnuc`. No further migration or authorization to change Production is implied.
 2. **Bootstrap test Owner**: user signs in via Google on the *test Supabase project*, yielding a distinct `auth.users.id`. Set `public.owner_config` for that new UUID via privileged project-specific operation only after confirmation. Keep Worker `OWNER_AUTH_USER_ID` in sync. Do not copy the production Owner UUID, database or user records.
 3. **Google OAuth**: configure a new Google OAuth client or explicitly authorized dedicated test redirect, including the new Supabase OAuth callback `https://hfsvnbbckfugrxugrnuc.supabase.co/auth/v1/callback`. Add Phase 2 Worker `/auth/callback` to the **test Supabase** allowed redirect URLs. No existing Google client modifications without approval. Store Google Client Secret solely in Supabase project Auth Provider secret settings.
 4. **Cloudflare**: deploy a *separate* `link-in-bio-phase2-preview` Worker, after explicit deployment approval; use the Phase 2 Supabase URL/key and an Owner UUID verified against **test** `auth.users`. Do not copy existing Worker secrets, routes or bindings.
@@ -46,4 +46,4 @@ Offline regression tests run under `npm test` and do not require any live Supaba
 
 The second Supabase project was approved at a **$0 monthly project creation quote**. Continue on Free plans only. The next resource / deploy approval must verify that Cloudflare Worker creation and traffic remain within Free quotas. If any step reports a nonzero recurring charge, stop and obtain explicit separate authorization; do not auto-upgrade.
 
-**Current gate:** staging prep is complete at source-code/plan level, but no app migration, test Worker, or Google configuration has been applied to the hosted test project.
+**Current gate:** isolated test migrations have been applied and verified. A security-advisor review remains open. No test Worker or Google OAuth provider configuration has been deployed.
