@@ -148,3 +148,11 @@
 - [x] Fixed an intermittent synthetic JWT test error: mutating the last base64url character may alter unused padding bits without changing the signature bytes. The negative test now modifies the first signature character and deterministically invalidates the HMAC.
 - [ ] Check the new GitHub Actions results for commit `f5b8022e` before claiming a full CI pass.
 - [ ] No hosted Supabase writes, production flag changes, deployment or merge into main were performed.
+
+## Actual Phase 1 schema compatibility CI — 4 November 2026
+
+- [x] Added `tests/real_schema_compat_fixture.sql`, applying the repository's actual `0001_initial_schema.sql` and `0005_audited_draft_transactions.sql` in a **separate disposable PostgreSQL 17 database**. Only Supabase-managed `auth.users` and `auth.uid()` are stubbed; the application tables, foreign keys, constraints, original RLS policies, Owner bootstrap, and Phase 2 RPC functions are loaded unchanged.
+- [x] Verified schema compatibility for Owner-only page creation, draft revision update, append-only audit events, anonymous grants, and Non-Owner visibility/denial.
+- [x] Switched the disposable PostgREST HTTP integration to this **actual schema database**, rather than the earlier hand-crafted base-table fixture. CI [#41772868572](https://github.com/omegapiammani-collab/link-in-bio/actions/runs/41772868572) passed both the real-schema migration step and the HTTP JWT/RLS/RPC step.
+- [ ] This is **not** a complete Supabase local stack: `auth.users`/`auth.uid()` remain synthetic, and migrations `0002`–`0004`, Supabase Auth/SSR cookies, Google OAuth, Storage, and full DR are not covered by this compatibility check. Do not infer production readiness.
+- [ ] Keep migration 0005 **unapplied** to the hosted project, all write flags disabled in production, and do not deploy or merge to `main`.
