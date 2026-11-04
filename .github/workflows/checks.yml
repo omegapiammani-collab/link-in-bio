@@ -414,6 +414,13 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
+      - run: npm ci --no-audit --no-fund
+      - name: Build isolated Next.js HTTP server against localhost-only Supabase gateway
+        run: npm run build
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: http://127.0.0.1:54321
+          NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: sb_publishable_ci_disposable_not_real
+          OWNER_AUTH_USER_ID: 00000000-0000-0000-0000-000000000000
       - name: Verify real GoTrue and Storage HTTP share one temporary PostgreSQL database
         run: |
           mkdir -p "$RUNNER_TEMP/storage-shared-files"
@@ -495,6 +502,7 @@ jobs:
           done
           test "$rest_ready" -eq 1 || { echo "Shared PostgREST failed health check" >&2; exit 1; }
           SHARED_GOTRUE_STORAGE_DB=true node tests/gotrue-storage-http.mjs
+          node tests/next-http-e2e.mjs
 
   bootstrap-vinext:
     if: github.event_name == 'push' && github.ref == 'refs/heads/feature/phase-1-foundation'
