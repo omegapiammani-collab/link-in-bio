@@ -1,5 +1,47 @@
 -- Run after the 0006 immutable publishing fixture on disposable PostgreSQL.
 \i /work/supabase/migrations/0007_staged_publication.sql
+\i /work/supabase/migrations/0008_secure_release_settings.sql
+
+-- Confirm the private release table is RLS-protected and inaccessible to API roles,
+-- and that the privileged gated RPC continues to see the default OFF switches.
+do $hardening$
+begin
+ if not (select relrowsecurity from pg_class where oid='app_private.release_settings'::regclass) then
+  raise exception 'private release_settings RLS was not enabled';
+ end if;
+ if (select count(*) from pg_policies where schemaname='app_private' and tablename='release_settings') <> 0 then
+  raise exception 'release_settings unexpectedly has an API access policy';
+ end if;
+ if pg_catalog.has_table_privilege('anon','app_private.release_settings','SELECT')
+    or pg_catalog.has_table_privilege('authenticated','app_private.release_settings','UPDATE')
+    or pg_catalog.has_schema_privilege('anon','app_private','USAGE') then
+  raise exception 'private release settings ACL leak';
+ end if;
+ if (select publish_enabled or public_read_enabled from app_private.release_settings where singleton) then
+  raise exception 'release gates started enabled';
+ end if;
+end;
+$hardening$;
+
+-- Direct calls must deny an anonymous publish and return no page data when
+-- the public reader is OFF. The table must be inaccessible even via a forged
+-- request identity because the schema and table grants are restricted.
+set role anon;
+do $anon$
+declare blocked boolean:=false;
+begin
+ if public.read_published_profile('compat-test') is not null then
+  raise exception 'anonymous reader bypassed OFF gate';
+ end if;
+ begin
+  perform * from public.publish_page_checked(null,1,true);
+ exception when insufficient_privilege then blocked:=true;
+ end;
+ if not blocked then raise exception 'anonymous user can call publish RPC'; end if;
+end;
+$anon$;
+reset role;
+
 
 -- Even an authenticated Owner cannot release anything with just the app
 -- feature flag: the private database release switch defaults OFF.
