@@ -143,7 +143,7 @@ jobs:
             -e GOTRUE_JWT_EXP=3600 \
             -e GOTRUE_JWT_SECRET=ci-only-gotrue-jwt-secret-32-plus-chars \
             supabase/gotrue:v2.197.0
-          trap 'docker logs phase2-postgrest-gotrue || true; docker rm -f phase2-postgrest-gotrue || true; docker logs phase2-gotrue || true; docker rm -f phase2-gotrue || true' EXIT
+          trap 'docker logs phase2-gotrue-restored || true; docker rm -f phase2-gotrue-restored || true; docker logs phase2-postgrest-gotrue || true; docker rm -f phase2-postgrest-gotrue || true; docker logs phase2-gotrue || true; docker rm -f phase2-gotrue || true' EXIT
           ready=0
           for i in $(seq 1 60); do
             if curl -fsS http://127.0.0.1:9999/health >/dev/null 2>&1; then ready=1; break; fi
@@ -178,6 +178,64 @@ jobs:
             exit 1
           fi
           node tests/gotrue-auth-http.mjs
+          # Database-only recovery: GoTrue identities, drafts, audit events,
+          # and private Storage *metadata*. Actual file bytes are not tested.
+          # The dump never leaves the ephemeral Actions runner.
+          docker run --rm --network host \
+            -e PGPASSWORD=ci-only-local-password \
+            -v "$RUNNER_TEMP:/backup" postgres:17 \
+            pg_dump -h 127.0.0.1 -U postgres -d gotrue_ci \
+              --format=custom --no-owner --no-acl \
+              -f /backup/phase2-gotrue-recovery.dump
+          docker run --rm --network host \
+            -e PGPASSWORD=ci-only-local-password postgres:17 \
+            psql -h 127.0.0.1 -U postgres -d gotrue_ci \
+              -v ON_ERROR_STOP=1 -c 'CREATE DATABASE gotrue_restored_ci'
+          docker run --rm --network host \
+            -e PGPASSWORD=ci-only-local-password \
+            -v "$RUNNER_TEMP:/backup:ro" postgres:17 \
+            pg_restore -h 127.0.0.1 -U postgres -d gotrue_restored_ci \
+              --exit-on-error --no-owner --no-acl /backup/phase2-gotrue-recovery.dump
+          docker run --rm --network host \
+            -e PGPASSWORD=ci-only-local-password \
+            -v "$PWD:/work:ro" postgres:17 \
+            psql -h 127.0.0.1 -U postgres -d gotrue_restored_ci \
+              -v ON_ERROR_STOP=1 -f /work/tests/restored_auth_storage_metadata.sql
+          docker run --rm --network host \
+            -e PGPASSWORD=ci-only-local-password postgres:17 \
+            psql -h 127.0.0.1 -U postgres -d gotrue_restored_ci \
+              -v ON_ERROR_STOP=1 \
+              -c 'ALTER ROLE postgres IN DATABASE gotrue_restored_ci SET search_path=auth,public'
+          docker run -d --name phase2-gotrue-restored --network host \
+            -e GOTRUE_API_HOST=0.0.0.0 \
+            -e GOTRUE_API_PORT=9998 \
+            -e API_EXTERNAL_URL=http://127.0.0.1:9998 \
+            -e GOTRUE_DB_DRIVER=postgres \
+            -e "GOTRUE_DB_DATABASE_URL=postgres://postgres:ci-only-local-password@127.0.0.1:5432/gotrue_restored_ci?sslmode=disable" \
+            -e GOTRUE_SITE_URL=http://localhost:3000 \
+            -e GOTRUE_DISABLE_SIGNUP=false \
+            -e GOTRUE_EXTERNAL_EMAIL_ENABLED=true \
+            -e GOTRUE_MAILER_AUTOCONFIRM=true \
+            -e GOTRUE_JWT_AUD=authenticated \
+            -e GOTRUE_JWT_EXP=3600 \
+            -e GOTRUE_JWT_SECRET=ci-only-gotrue-jwt-secret-32-plus-chars \
+            supabase/gotrue:v2.197.0
+          restored_ready=0
+          for i in $(seq 1 40); do
+            if curl -fsS http://127.0.0.1:9998/health >/dev/null 2>&1; then restored_ready=1; break; fi
+            if ! docker inspect -f '{{.State.Running}}' phase2-gotrue-restored 2>/dev/null | grep -q true; then break; fi
+            sleep 1
+          done
+          if [ "$restored_ready" -ne 1 ]; then
+            echo "Restored GoTrue health check failed" >&2
+            exit 1
+          fi
+          expected_owner="$(docker run --rm --network host \
+            -e PGPASSWORD=ci-only-local-password postgres:17 \
+            psql -h 127.0.0.1 -U postgres -d gotrue_restored_ci \
+              -At -c 'SELECT auth_user_id FROM public.owner_config WHERE singleton')"
+          EXPECTED_RESTORED_OWNER_UUID="$expected_owner" node tests/gotrue-restored-login.mjs
+          rm -f "$RUNNER_TEMP/phase2-gotrue-recovery.dump"
 
   bootstrap-vinext:
     if: github.event_name == 'push' && github.ref == 'refs/heads/feature/phase-1-foundation'
