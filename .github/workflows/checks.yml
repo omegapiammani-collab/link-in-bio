@@ -95,6 +95,59 @@ jobs:
           done
           node tests/postgrest-http.mjs
 
+  isolated-gotrue-auth:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: ci-only-local-password
+          POSTGRES_DB: gotrue_ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d gotrue_ci"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm ci --no-audit --no-fund
+      - name: Test local GoTrue Auth HTTP with real Supabase SSR cookies
+        run: |
+          docker run --rm -d --name phase2-gotrue --network host \
+            -e GOTRUE_API_HOST=0.0.0.0 \
+            -e GOTRUE_API_PORT=9999 \
+            -e API_EXTERNAL_URL=http://127.0.0.1:9999 \
+            -e GOTRUE_DB_DRIVER=postgres \
+            -e "GOTRUE_DB_DATABASE_URL=postgres://postgres:ci-only-local-password@127.0.0.1:5432/gotrue_ci?sslmode=disable" \
+            -e GOTRUE_SITE_URL=http://localhost:3000 \
+            -e GOTRUE_DISABLE_SIGNUP=false \
+            -e GOTRUE_EXTERNAL_EMAIL_ENABLED=true \
+            -e GOTRUE_MAILER_AUTOCONFIRM=true \
+            -e GOTRUE_JWT_AUD=authenticated \
+            -e GOTRUE_JWT_DEFAULT_GROUP_NAME=authenticated \
+            -e GOTRUE_JWT_EXP=3600 \
+            -e GOTRUE_JWT_SECRET=ci-only-gotrue-jwt-secret-32-plus-chars \
+            supabase/gotrue:v2.197.0
+          trap 'docker logs phase2-gotrue || true; docker stop phase2-gotrue || true' EXIT
+          ready=0
+          for i in $(seq 1 60); do
+            if curl -fsS http://127.0.0.1:9999/health >/dev/null 2>&1; then ready=1; break; fi
+            if ! docker inspect -f '{{.State.Running}}' phase2-gotrue 2>/dev/null | grep -q true; then break; fi
+            sleep 1
+          done
+          if [ "$ready" -ne 1 ]; then
+            echo "Isolated GoTrue health check failed" >&2
+            exit 1
+          fi
+          node tests/gotrue-auth-http.mjs
+
   bootstrap-vinext:
     if: github.event_name == 'push' && github.ref == 'refs/heads/feature/phase-1-foundation'
     runs-on: ubuntu-latest
