@@ -1,8 +1,7 @@
 -- Real migration compatibility test using disposable PostgreSQL 17, no hosted DB.
 -- Emulate ONLY Supabase's auth.users and auth.uid() prerequisites; all public
 -- application tables, constraints, policies and RPCs are the real migrations.
-create role anon nologin;
-create role authenticated nologin;
+-- PostgreSQL roles are cluster-wide and already exist from the preceding fixture.
 create schema auth;
 create table auth.users (id uuid primary key);
 create function auth.uid() returns uuid language sql stable set search_path=''
