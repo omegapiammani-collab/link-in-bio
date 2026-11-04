@@ -244,6 +244,14 @@ const ownerAfterDelete = await storageApi('objects?id=eq.' + storageId + '&selec
 assert.equal(ownerAfterDelete.data?.length, 0,
   'Owner DELETE must remove metadata under policy');
 
+// Keep one synthetic Storage metadata row for the database-only restore drill.
+// No actual file bytes are uploaded or persisted by this PostgREST fixture.
+const recoveryObject = await storageApi('objects', {
+  token: ownerJwt, method: 'POST',
+  body: { bucket_id: 'link-in-bio-media', name: 'backup/recovery-fixture.png' }
+});
+assert.equal(recoveryObject.status, 201, JSON.stringify(recoveryObject));
+
 const fresh = clientFixture();
 assert.equal(await verifyOwnerSession(fresh.client(), ownerId), null,
   'missing SSR cookies must deny');
