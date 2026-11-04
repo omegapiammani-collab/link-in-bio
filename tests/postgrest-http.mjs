@@ -120,7 +120,11 @@ const duplicate = await create('http-owner-draft');
 check(duplicate.status === 409,
   'duplicate slug must be rejected over HTTP', duplicate);
 
-const fakeJwt = jwt(owner).slice(0, -1) + 'A';
+// Alter a high-order signature character. Changing only the last base64url
+// character can change unused padding bits without changing decoded bytes.
+const forgedParts = jwt(owner).split('.');
+forgedParts[2] = (forgedParts[2][0] === 'A' ? 'B' : 'A') + forgedParts[2].slice(1);
+const fakeJwt = forgedParts.join('.');
 const invalidJwt = await call('/page_drafts?select=revision', { token: fakeJwt });
 check(invalidJwt.status === 401,
   'invalid JWT signature must be rejected', invalidJwt);
