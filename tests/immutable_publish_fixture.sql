@@ -133,4 +133,28 @@ begin
   if not v_denied then raise exception 'non-owner publish succeeded'; end if;
 end;
 $test$;
+-- Owner is authenticated but cannot fabricate immutable history or audit rows.
+set role authenticated;
+select set_config('request.jwt.claim.sub','aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',false);
+do $test$
+declare v_page uuid; v_denied_version boolean:=false; v_denied_audit boolean:=false;
+begin
+  select id into v_page from public.pages where slug='compat-test';
+  begin
+    insert into public.page_versions(page_id,version_number,snapshot_json)
+    values(v_page,42,'{}'::jsonb);
+  exception when insufficient_privilege then v_denied_version:=true;
+  end;
+  begin
+    insert into public.audit_events(actor_id,event_type,entity_type,entity_id)
+    values((select auth.uid()),'forged','page',v_page);
+  exception when insufficient_privilege then v_denied_audit:=true;
+  end;
+  if not v_denied_version or not v_denied_audit then
+    raise exception 'authenticated Owner bypassed version or audit transaction';
+  end if;
+end;
+$test$;
+reset role;
+
 select 'PASS: private immutable publish, revision, ancestry, audit rollback, permissions' as result;
