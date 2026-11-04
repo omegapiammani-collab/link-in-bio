@@ -120,7 +120,11 @@ jobs:
       - run: npm ci --no-audit --no-fund
       - name: Test local GoTrue Auth HTTP with real Supabase SSR cookies
         run: |
-          docker run --rm -d --name phase2-gotrue --network host \
+          docker run --rm --network host \
+            -e PGPASSWORD=ci-only-local-password postgres:17 \
+            psql -h 127.0.0.1 -U postgres -d gotrue_ci -v ON_ERROR_STOP=1 \
+            -c 'CREATE SCHEMA IF NOT EXISTS auth'
+          docker run -d --name phase2-gotrue --network host \
             -e GOTRUE_API_HOST=0.0.0.0 \
             -e GOTRUE_API_PORT=9999 \
             -e API_EXTERNAL_URL=http://127.0.0.1:9999 \
@@ -135,7 +139,7 @@ jobs:
             -e GOTRUE_JWT_EXP=3600 \
             -e GOTRUE_JWT_SECRET=ci-only-gotrue-jwt-secret-32-plus-chars \
             supabase/gotrue:v2.197.0
-          trap 'docker logs phase2-gotrue || true; docker stop phase2-gotrue || true' EXIT
+          trap 'docker logs phase2-gotrue || true; docker rm -f phase2-gotrue || true' EXIT
           ready=0
           for i in $(seq 1 60); do
             if curl -fsS http://127.0.0.1:9999/health >/dev/null 2>&1; then ready=1; break; fi
