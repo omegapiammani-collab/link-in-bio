@@ -38,7 +38,7 @@ begin
     raise exception 'revision_conflict' using errcode = 'P0001';
   end if;
   perform app_private.assert_draft_document(v_draft.profile_json);
-  select pg_catalog.coalesce(pg_catalog.jsonb_agg(
+  select coalesce(pg_catalog.jsonb_agg(
     pg_catalog.jsonb_build_object(
       'id', b.id, 'type', b.type, 'content', b.content_json,
       'active', b.is_active, 'sortOrder', b.sort_order,
@@ -49,7 +49,7 @@ begin
   from public.page_blocks b
   where b.page_id = p_page_id and b.deleted_at is null;
 
-  select pg_catalog.coalesce(max(version_number),0)
+  select coalesce(max(version_number),0)
     into v_last_version from public.page_versions where page_id=p_page_id;
   if v_last_version >= 2147483647 then
     raise exception 'version_limit' using errcode='22023';
