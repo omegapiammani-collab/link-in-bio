@@ -313,7 +313,7 @@ jobs:
             -e PGPASSWORD=ci-only-local-password \
             -v "$RUNNER_TEMP:/backup" postgres:17 \
             pg_dump -h 127.0.0.1 -U postgres -d storage_http_ci \
-              --format=custom --no-owner --no-acl \
+              --format=custom --no-owner \
               -f /backup/storage-api-recovery.dump
           docker run --rm --network host \
             -e PGPASSWORD=ci-only-local-password postgres:17 \
@@ -323,7 +323,7 @@ jobs:
             -e PGPASSWORD=ci-only-local-password \
             -v "$RUNNER_TEMP:/backup:ro" postgres:17 \
             pg_restore -h 127.0.0.1 -U postgres -d storage_http_restored \
-              --exit-on-error --no-owner --no-acl /backup/storage-api-recovery.dump
+              --exit-on-error --no-owner /backup/storage-api-recovery.dump
           docker run -d --name phase2-storage-http-restored --network host \
             -e SERVER_PORT=5002 \
             -e "DATABASE_URL=postgresql://postgres:ci-only-local-password@127.0.0.1:5432/storage_http_restored?sslmode=disable" \
