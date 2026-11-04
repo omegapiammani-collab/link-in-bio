@@ -100,3 +100,12 @@
 - [ ] Confirm the new UI CI run completes successfully; no production operation was performed.
 - [ ] Still required before enabling hosted writes: full isolated Supabase Auth/PostgREST/Storage behavior with real Auth tokens, real existing migration/RLS, owner and non-owner API requests, audit rollback and feature-flag validation.
 - [ ] Remain explicitly blocked: applying migration 0005 to hosted Supabase, updating deployment flags, any production deployment and merging into `main`.
+
+## Disposable PostgREST JWT/RLS HTTP integration — 4 November 2026
+
+- [x] Added `tests/postgrest_setup.sql` for an isolated PostgREST authenticator role and JWT claim reader, using **CI-only synthetic credentials** and PostgreSQL 17. No hosted Supabase connection, dashboard mutation, GitHub Secrets or live user account is involved.
+- [x] Added `tests/postgrest-http.mjs` with **15 real HTTP assertions**, using HS256 JWTs signed by a local fixture-only test secret. The checks include anonymous/non-owner RPC denial, Owner RPC create/save, owner-only RLS reads, stale revision conflict, direct table-write denial, audit visibility, duplicate slug and malformed JWT rejection.
+- [x] Added a GitHub Actions step running pinned `postgrest/postgrest:v14.18` against the disposable PostgreSQL service, with connection and API credentials explicitly scoped to the CI fixture.
+- [x] [GitHub Actions #41770136566](https://github.com/omegapiammani-collab/link-in-bio/actions/runs/41770136566) successfully completed the isolated HTTP assertion step (**15 passes**) and the offline PG17 audit/rollback tests.
+- [ ] This is **genuine PostgREST HTTP/JWT/PostgreSQL-RLS testing**, but it is *not* the official Supabase local Auth stack: the fixture substitutes `auth.uid()` and synthetic auth roles. Full isolated Supabase Auth, SSR cookies, Google OAuth redirect, Storage and real migrations 0001–0004 remain separate acceptance gates.
+- [ ] Continue to leave all Phase 2 write flags disabled in hosted deployments and migration 0005 unapplied to hosted Supabase. Production deployment, paid plans and merge to main remain blocked.
