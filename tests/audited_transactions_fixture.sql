@@ -171,6 +171,28 @@ begin
 end;
 $test$;
 
+-- Failed page creation must not leave an orphan page or draft.
+do $create_rollback$
+declare v_denied boolean:=false;
+begin
+ perform set_config('fixture.fail_audit','on',false);
+ begin
+   perform * from public.create_page_draft_audited(
+     'create-rollback','{"name":"Rollback","description":"","links":[]}'::jsonb);
+ exception when others then v_denied:=true;
+ end;
+ perform set_config('fixture.fail_audit','off',false);
+ if not v_denied then raise exception 'audit failure did not reject creation'; end if;
+ if exists(select 1 from public.pages where slug='create-rollback') then
+   raise exception 'orphaned page remained after failed audit';
+ end if;
+ if exists(select 1 from public.page_drafts d
+   join public.pages p on p.id=d.page_id where p.slug='create-rollback') then
+   raise exception 'orphaned draft remained after failed audit';
+ end if;
+end;
+$create_rollback$;
+
 -- Exercise actual PostgreSQL RLS instead of grants alone. The synthetic
 -- ownership helper substitutes only for Supabase Auth; the RLS engine is real.
 reset role;
