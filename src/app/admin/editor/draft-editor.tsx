@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { loadExistingDraft, saveExistingDraft, DraftRequestError } from '@/lib/domain/draft-api.mjs';
 import { validExternalUrl } from '@/lib/domain/draft-contract.mjs';
 
@@ -24,6 +24,19 @@ export function DraftEditor({ draftPageId }: { draftPageId?: string }) {
   const [conflicted, setConflicted] = useState(false);
   const [dirty, setDirty] = useState(false);
   const [feedback, setFeedback] = useState('');
+  const requestInFlight = useRef(false);
+
+  // Browser refresh, tab close and full-page navigation must warn before
+  // discarding unsaved changes. The platform owns the actual dialog message.
+  useEffect(() => {
+    if (!draftPageId || !dirty) return;
+    const warn = (event: BeforeUnloadEvent) => {
+      event.preventDefault();
+      event.returnValue = '';
+    };
+    window.addEventListener('beforeunload', warn);
+    return () => window.removeEventListener('beforeunload', warn);
+  }, [draftPageId, dirty]);
 
   useEffect(() => {
     if (!draftPageId) return;
@@ -48,7 +61,9 @@ export function DraftEditor({ draftPageId }: { draftPageId?: string }) {
   }, [draftPageId]);
 
   async function save() {
-    if (!draftPageId || revision === null || invalid || saving || conflicted) return;
+    if (!draftPageId || revision === null || invalid || saving || conflicted ||
+        !dirty || requestInFlight.current) return;
+    requestInFlight.current = true;
     setSaving(true);
     setFeedback('');
     try {
@@ -64,13 +79,15 @@ export function DraftEditor({ draftPageId }: { draftPageId?: string }) {
         setFeedback('บันทึกไม่สำเร็จ ข้อมูลในหน้านี้ยังไม่ถูกส่งเผยแพร่');
       }
     } finally {
+      requestInFlight.current = false;
       setSaving(false);
     }
   }
 
   async function reloadLatest() {
-    if (!draftPageId || saving || loading) return;
+    if (!draftPageId || saving || loading || requestInFlight.current) return;
     if (dirty && !window.confirm('การโหลดข้อมูลล่าสุดจะทิ้งการแก้ไขที่ยังไม่ได้บันทึก ต้องการดำเนินการหรือไม่?')) return;
+    requestInFlight.current = true;
     setLoading(true);
     setFeedback('');
     try {
@@ -85,6 +102,7 @@ export function DraftEditor({ draftPageId }: { draftPageId?: string }) {
     } catch {
       setFeedback('ไม่สามารถโหลดฉบับร่างล่าสุดได้');
     } finally {
+      requestInFlight.current = false;
       setLoading(false);
     }
   }
@@ -185,12 +203,12 @@ export function DraftEditor({ draftPageId }: { draftPageId?: string }) {
           {draftPageId && <p className="text-xs text-slate-600">Revision {revision} · {dirty ? 'มีการเปลี่ยนแปลงที่ยังไม่บันทึก' : 'ไม่มีการเปลี่ยนแปลงที่รอบันทึก'}</p>}
           {feedback && <p role="status" aria-live="polite" className="text-sm text-slate-700">{feedback}</p>}
           <div className="flex flex-wrap gap-2">
-            <button type="button" disabled={!draftPageId || invalid || saving || conflicted || !dirty}
+            <button type="button" disabled={!draftPageId || invalid || saving || loading || conflicted || !dirty}
               onClick={() => void save()}
               className="rounded-lg bg-slate-900 px-4 py-2 text-white disabled:bg-slate-200 disabled:text-slate-500">
               {saving ? 'กำลังบันทึก...' : draftPageId ? 'บันทึกฉบับร่าง' : 'บันทึกฉบับร่าง (ปิดใช้งาน)'}
             </button>
-            {draftPageId && <button type="button" disabled={saving}
+            {draftPageId && <button type="button" disabled={saving || loading}
               onClick={() => void reloadLatest()}
               className="rounded-lg border px-4 py-2 disabled:opacity-50">
               โหลดข้อมูลล่าสุด
