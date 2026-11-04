@@ -65,12 +65,22 @@ function db(sql) {
 const owner = await registerAndLogin('owner');
 const nonOwner = await registerAndLogin('nonowner');
 assert.notEqual(owner.id, nonOwner.id);
-// The real GoTrue provider runs on a separate disposable DB in this acceptance
-// job. Synchronize identities to the application DB exactly as an Auth service
-// sharing this database would, without allowing browser clients to bootstrap.
-db("INSERT INTO auth.users(id) VALUES ('" + owner.id +
-  "'::uuid),('" + nonOwner.id + "'::uuid); " +
-  "UPDATE public.owner_config SET auth_user_id='" + owner.id + "'::uuid WHERE singleton");
+// In shared-stack mode Auth and Storage use the SAME PostgreSQL database.
+// A foreign-key check proves GoTrue created the real auth.users records.
+// In the legacy separated fixture, synthetic identities are synchronized only
+// to support that older test. Never synchronize production identities.
+if (process.env.SHARED_GOTRUE_STORAGE_DB === 'true') {
+  db("DO $check$ BEGIN IF NOT EXISTS (SELECT 1 FROM auth.users WHERE id='" +
+    owner.id + "'::uuid) OR NOT EXISTS (SELECT 1 FROM auth.users WHERE id='" +
+    nonOwner.id + "'::uuid) THEN RAISE EXCEPTION 'real GoTrue users missing'; " +
+    "END IF; END; $check$; " +
+    "INSERT INTO public.owner_config(singleton,auth_user_id) VALUES (true,'" +
+    owner.id + "'::uuid)");
+} else {
+  db("INSERT INTO auth.users(id) VALUES ('" + owner.id +
+    "'::uuid),('" + nonOwner.id + "'::uuid); " +
+    "UPDATE public.owner_config SET auth_user_id='" + owner.id + "'::uuid WHERE singleton");
+}
 
 async function req(path, { token, method='GET', body, contentType }={}) {
   const response = await fetch(storage + path, {
