@@ -109,7 +109,9 @@ const env={
   OWNER_AUTH_USER_ID:ownerId,
   PHASE2_PAGE_CREATE_ENABLED:'true',
   PHASE2_DRAFT_WRITE_ENABLED:'true',
-  PHASE2_PAGE_LIST_ENABLED:'true'
+  PHASE2_PAGE_LIST_ENABLED:'true',
+  PHASE2_PUBLISH_ENABLED:'true',
+  PHASE2_PUBLIC_RENDER_ENABLED:'true'
 };
 const server=spawn(process.execPath,['node_modules/next/dist/bin/next','start','-p',String(appPort),'-H','localhost'],{
   env,stdio:['ignore','pipe','pipe']
@@ -220,7 +222,74 @@ try{
   assert.equal(verified.status,200);
   assert.equal(verified.data.revision,2);
 
-  console.log('PASS: actual Next HTTP /admin and guarded APIs, real GoTrue SSR cookies, PostgREST RLS, CSRF, CAS');
+  // Only explicit Owner publication can make a private snapshot public.
+  // A published-but-unlisted snapshot must stay inaccessible anonymously.
+  const slug='next-http-owner';
+  const hiddenBefore=await call('/'+slug);
+  assert.equal(hiddenBefore.status,404,'draft profile became public before release');
+  const foreignPublish=await call('/api/admin/publish/'+pageId,{
+    cookie:other.cookie,method:'POST',
+    body:{expectedRevision:2,makePublic:true}
+  });
+  assert.equal(foreignPublish.status,403,JSON.stringify(foreignPublish.data));
+  const anonPublish=await call('/api/admin/publish/'+pageId,{
+    method:'POST',body:{expectedRevision:2,makePublic:true}
+  });
+  assert.equal(anonPublish.status,403,JSON.stringify(anonPublish.data));
+  const csrfPublish=await call('/api/admin/publish/'+pageId,{
+    cookie:owner.cookie,method:'POST',origin:'https://untrusted.example.invalid',
+    body:{expectedRevision:2,makePublic:true}
+  });
+  assert.equal(csrfPublish.status,403,JSON.stringify(csrfPublish.data));
+
+  const unlisted=await call('/api/admin/publish/'+pageId,{
+    cookie:owner.cookie,method:'POST',
+    body:{expectedRevision:2,makePublic:false}
+  });
+  assert.equal(unlisted.status,200,JSON.stringify(unlisted.data));
+  assert.equal(unlisted.data.visibility,'unlisted');
+  assert.equal(unlisted.data.versionNumber,1);
+  assert.equal((await call('/'+slug)).status,404,'unlisted snapshot leaked');
+
+  const publicRelease=await call('/api/admin/publish/'+pageId,{
+    cookie:owner.cookie,method:'POST',
+    body:{expectedRevision:2,makePublic:true}
+  });
+  assert.equal(publicRelease.status,200,JSON.stringify(publicRelease.data));
+  assert.equal(publicRelease.data.versionNumber,2);
+  const publicPage=await call('/'+slug);
+  assert.equal(publicPage.status,200,JSON.stringify(publicPage.data).slice(0,350));
+  assert.ok(String(publicPage.data).includes('Updated Next HTTP'),
+    'public route did not display the immutable published profile');
+
+  const staleRelease=await call('/api/admin/publish/'+pageId,{
+    cookie:owner.cookie,method:'POST',
+    body:{expectedRevision:1,makePublic:false}
+  });
+  assert.equal(staleRelease.status,409,JSON.stringify(staleRelease.data));
+  assert.equal((await call('/'+slug)).status,200,
+    'stale publication unexpectedly changed visibility');
+
+  const edited=await call('/api/admin/drafts/'+pageId,{
+    cookie:owner.cookie,method:'PATCH',
+    body:{expectedRevision:2,document:{...document,name:'Not yet released'}}
+  });
+  assert.equal(edited.status,200,JSON.stringify(edited.data));
+  const currentPublic=await call('/'+slug);
+  assert.equal(currentPublic.status,200);
+  assert.ok(String(currentPublic.data).includes('Updated Next HTTP'));
+  assert.ok(!String(currentPublic.data).includes('Not yet released'),
+    'private draft leaked into immutable public profile');
+
+  const removePublic=await call('/api/admin/publish/'+pageId,{
+    cookie:owner.cookie,method:'POST',
+    body:{expectedRevision:3,makePublic:false}
+  });
+  assert.equal(removePublic.status,200,JSON.stringify(removePublic.data));
+  assert.equal((await call('/'+slug)).status,404,
+    'unlisted republish did not revoke public route access');
+
+  console.log('PASS: actual Next HTTP /admin and guarded APIs, real GoTrue SSR cookies, PostgREST RLS, CSRF, CAS and explicit immutable publish privacy');
 } finally {
   server.kill('SIGTERM');
   await new Promise(resolve=>{
