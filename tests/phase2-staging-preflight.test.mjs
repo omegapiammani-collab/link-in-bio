@@ -25,10 +25,18 @@ test('preflight rejects old Production project and fake publishable keys',()=>{
   {SUPABASE_SERVICE_ROLE_KEY:'should_not_exist'}
  ])assert.equal(validatePhase2StagingEnv({...env,...patch}).ok,false,JSON.stringify(patch));
 });
+test('only owner page list may be enabled, with every write and public flag denied',()=>{
+ assert.deepEqual(validatePhase2StagingEnv({...env,PHASE2_PAGE_LIST_ENABLED:'true'}),{ok:true,errors:[]});
+ assert.equal(validatePhase2StagingEnv({...env,PHASE2_PAGE_LIST_ENABLED:'TRUE'}).ok,false);
+ assert.equal(validatePhase2StagingEnv({...env,PHASE2_PAGE_LIST_ENABLED:'1'}).ok,false);
+ for(const flag of ['PHASE2_PAGE_CREATE_ENABLED','PHASE2_DRAFT_WRITE_ENABLED','PHASE2_PUBLISH_ENABLED','PHASE2_PUBLIC_RENDER_ENABLED','PHASE2_MEDIA_UPLOAD_ENABLED','PHASE2_MEDIA_SIGN_ENABLED']){
+  assert.equal(validatePhase2StagingEnv({...env,PHASE2_PAGE_LIST_ENABLED:'true',[flag]:'true'}).ok,false,flag);
+ }
+});
 test('all stage-changing flags default off and fail when accidentally enabled',()=>{
  for(const flag of [
  'PHASE2_PAGE_CREATE_ENABLED','PHASE2_DRAFT_WRITE_ENABLED',
- 'PHASE2_PAGE_LIST_ENABLED','PHASE2_PUBLISH_ENABLED',
+ 'PHASE2_PUBLISH_ENABLED',
  'PHASE2_PUBLIC_RENDER_ENABLED','PHASE2_MEDIA_UPLOAD_ENABLED',
  'PHASE2_MEDIA_SIGN_ENABLED']){
   assert.equal(validatePhase2StagingEnv({...env,[flag]:'true'}).ok,false,flag);
