@@ -90,3 +90,13 @@
 - [x] Expanded the isolated PostgreSQL fixture with direct-RPC negative tests, a valid external-link positive test, and an authenticated Non-Owner save denial.
 - [ ] Re-run PostgreSQL integration CI after correcting a PostgreSQL `substring` syntax issue discovered in the first run. The earliest expanded test **failed** and must not be recorded as PASS. No hosted Supabase mutation was attempted.
 - [ ] This DNS-format validation does not itself prevent DNS rebinding or malicious redirects if the server later fetches URLs. The current application does not perform such URL fetches.
+
+## Isolated RLS regression and new-page UI — 4 November 2026
+
+- [x] Extended the disposable PostgreSQL 17 CI fixture to enable **actual PostgreSQL RLS** on pages, drafts and audit, proving that a synthetic Owner sees permitted records and a synthetic authenticated Non-Owner sees zero private rows. Also verifies atomic page+draft rollback when the audit INSERT is intentionally failed.
+- [x] These database checks passed in [GitHub Actions #41769399290](https://github.com/omegapiammani-collab/link-in-bio/actions/runs/41769399290). This is **PostgreSQL RLS with a synthetic auth.uid() helper**, not a full Supabase Auth HTTP integration.
+- [x] Added an Owner-gated `/admin/new` page and form for creating a private, unlisted draft. This is **hidden and inaccessible by default** unless both `PHASE2_PAGE_CREATE_ENABLED=true` and `PHASE2_DRAFT_WRITE_ENABLED=true` are enabled in an isolated development deployment. A successful response redirects to the existing Owner draft Editor.
+- [x] Added a same-origin `createNewDraftPage` client adapter and unit tests for accepted slugs, reserved/malformed slugs, duplicate slugs, disabled server responses and invalid success payloads.
+- [ ] Confirm the new UI CI run completes successfully; no production operation was performed.
+- [ ] Still required before enabling hosted writes: full isolated Supabase Auth/PostgREST/Storage behavior with real Auth tokens, real existing migration/RLS, owner and non-owner API requests, audit rollback and feature-flag validation.
+- [ ] Remain explicitly blocked: applying migration 0005 to hosted Supabase, updating deployment flags, any production deployment and merging into `main`.
