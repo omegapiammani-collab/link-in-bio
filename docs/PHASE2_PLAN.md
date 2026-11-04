@@ -52,3 +52,14 @@
 - [ ] Verify the new commit's CI run succeeds; no PASS claim until results are observed.
 - [ ] Hosted draft writes, transactional page creation, audit/publish and production remain **disabled**.
 - [ ] This validation enforces a syntactic DNS-host policy only. It does not resolve DNS, evaluate redirects or provide SSRF protection for a future server-side URL fetcher; any such feature needs dedicated network controls.
+
+## Phase 2 existing-draft editor integration — 4 November 2026
+
+- [x] Introduced `src/lib/domain/draft-api.mjs`, a client-side request adapter using same-origin credentials, no-store fetch, strict response contract checking and explicit 409 failure mapping.
+- [x] The Owner-gated editor can load and save an **existing** draft identified by the query parameter `pageId=<UUID>`, but only when server-side `PHASE2_DRAFT_WRITE_ENABLED=true` and API authorization both allow it.
+- [x] Saving uses the exact loaded `revision`; a 409 freezes further saves until the Owner explicitly reloads the latest draft. Reload warns before discarding unsaved changes.
+- [x] The default view remains an in-memory preview with Save disabled. No page creation, publishing, public renderer, media upload or service-role credential is introduced.
+- [x] Added contract tests for reads, writes, stale-revision 409, invalid documents, invalid IDs, bad success responses and disabled-route failures.
+- [ ] **No isolated Owner/Non-Owner HTTP integration test completed yet**. No claim of persisted hosted writes. The feature flag remains disabled on the current deployment.
+- [ ] Add atomic audited page+draft creation and draft-save audit transaction before widening write access. Ensure the current conditional UPDATE path is tested against real RLS and an isolated Supabase stack.
+- [ ] Production deployment, `main` merge and previously deferred full Auth/Storage disaster recovery remain blocked.
