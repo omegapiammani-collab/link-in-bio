@@ -42,3 +42,13 @@
 5. Keep the user's deferred full Auth/Storage disaster recovery labeled as a **waived test, not a PASS** before any production release.
 
 **Safety controls:** No mutation of hosted Supabase, no GitHub Secrets changes, no production deployment, no merge to `main`, no paid tier.
+
+## Phase 2 security validation increment — 4 November 2026
+
+- [x] Hardened the shared external-link validator against URL-parser canonicalization bypasses (decimal, octal and hexadecimal IP literals), IPv6 literals, trailing-dot or malformed hostnames, credentials, whitespace and reserved local-domain suffixes.
+- [x] Reused the same shared URL validator in the client preview/editor so preview validity is aligned with the server draft contract.
+- [x] Updated the editor's example link ID to a valid UUID, consistent with the server draft contract.
+- [x] Added Node regression tests for accepted public domains and rejected private/local/numeric hostnames.
+- [ ] Verify the new commit's CI run succeeds; no PASS claim until results are observed.
+- [ ] Hosted draft writes, transactional page creation, audit/publish and production remain **disabled**.
+- [ ] This validation enforces a syntactic DNS-host policy only. It does not resolve DNS, evaluate redirects or provide SSRF protection for a future server-side URL fetcher; any such feature needs dedicated network controls.
