@@ -80,6 +80,19 @@ check(ownerRead.status === 200 && Array.isArray(ownerRead.data) &&
   ownerRead.data.some(row => row.page_id === id && row.revision === 1),
   'Owner should read its created draft through RLS', ownerRead);
 
+const privatePageList = await call('/pages?select=id,slug,status,visibility,updated_at&deleted_at=is.null&order=updated_at.desc,id.asc&limit=50', { token: o });
+check(privatePageList.status === 200 && Array.isArray(privatePageList.data) &&
+  privatePageList.data.some(page => page.id === id && page.slug === 'http-owner-draft' &&
+    page.status === 'draft' && page.visibility === 'unlisted'),
+  'Owner can see draft metadata through RLS-protected page index', privatePageList);
+const nonOwnerPageList = await call('/pages?select=id,slug,status,visibility,updated_at', { token: s });
+check(nonOwnerPageList.status === 200 && Array.isArray(nonOwnerPageList.data) &&
+  nonOwnerPageList.data.length === 0,
+  'Non-Owner must not discover private page metadata', nonOwnerPageList);
+const anonPageList = await call('/pages?select=id,slug');
+check(anonPageList.status === 401 || anonPageList.status === 403,
+  'anonymous clients cannot query the page index', anonPageList);
+
 const nonOwnerSave = await save(id, 1, s);
 check(nonOwnerSave.status === 403, 'Non-Owner cannot save Owner draft', nonOwnerSave);
 const updated = await save(id, 1);
