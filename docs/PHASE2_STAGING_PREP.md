@@ -29,10 +29,10 @@ Date: 4 November 2026. **No hosted migration, deployment, Google OAuth settings 
 
 ```sh
 # Provide these as shell environment variables, not as GitHub source code.
-NEXT_PUBLIC_SUPABASE_URL=https://hfsvnbbckfugrxugrnuc.supabase.co
-NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=<publishable-key-from-test-project>
-OWNER_AUTH_USER_ID=<UUID-from-test-auth-users>
-PHASE2_EXPECTED_ORIGIN=https://link-in-bio-phase2-preview.omega-piammani.workers.dev
+export NEXT_PUBLIC_SUPABASE_URL=https://hfsvnbbckfugrxugrnuc.supabase.co
+export NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=<publishable-key-from-test-project>
+export OWNER_AUTH_USER_ID=<UUID-from-test-auth-users>
+export PHASE2_EXPECTED_ORIGIN=https://link-in-bio-phase2-preview.omega-piammani.workers.dev
 # All PHASE2_* feature flags absent or set false.
 node scripts/verify_phase2_staging_env.mjs
 ```
