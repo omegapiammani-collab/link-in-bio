@@ -1,6 +1,26 @@
 -- Run after the 0006 immutable publishing fixture on disposable PostgreSQL.
 \i /work/supabase/migrations/0007_staged_publication.sql
 
+-- Even an authenticated Owner cannot release anything with just the app
+-- feature flag: the private database release switch defaults OFF.
+set role authenticated;
+select set_config('request.jwt.claim.sub','aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',false);
+do $gate$
+declare blocked boolean:=false;
+begin
+  begin
+    perform * from public.publish_page_checked(
+      (select id from public.pages where slug='compat-test'),3,true);
+  exception when insufficient_privilege then blocked:=true;
+  end;
+  if not blocked then raise exception 'default-off publish interlock bypassed'; end if;
+end;
+$gate$;
+reset role;
+-- CI-only privileged approval: never mutate hosted settings without approval.
+update app_private.release_settings
+set publish_enabled=true, public_read_enabled=true where singleton;
+
 -- Published but unlisted snapshots MUST NOT leak even via the public RPC.
 set role anon;
 do $check$
