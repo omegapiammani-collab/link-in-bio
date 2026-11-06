@@ -9,6 +9,7 @@ const stagingEnvKeys = [
   "NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY",
   "OWNER_AUTH_USER_ID",
   "PHASE2_EXPECTED_ORIGIN",
+  "PHASE2_PAGE_LIST_ENABLED",
 ] as const;
 
 const stagingBindings = Object.fromEntries(
