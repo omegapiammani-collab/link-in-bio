@@ -2,6 +2,7 @@ name: Checks
 on:
   push:
   pull_request:
+  workflow_dispatch:
 permissions:
   contents: read
 jobs:
@@ -21,7 +22,7 @@ jobs:
       - name: Validate Cloudflare vinext production build
         run: npm run build:vinext
         env:
-          NEXT_PUBLIC_SUPABASE_URL: https://mmbhuxiejfqipttyujop.supabase.co
+          NEXT_PUBLIC_SUPABASE_URL: https://hfsvnbbckfugrxugrnuc.supabase.co
           NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: sb_publishable_test_only
           OWNER_AUTH_USER_ID: 00000000-0000-0000-0000-000000000000
 
@@ -47,6 +48,469 @@ jobs:
       - uses: actions/checkout@v4
       - name: Restore encrypted fixture into isolated PostgreSQL 17
         run: bash scripts/offline_restore_drill.sh
+      - name: Test audited draft transactions in isolated PostgreSQL 17
+        run: |
+          docker run --rm --network host \
+            -e PGPASSWORD=ci-only-local-password \
+            -v "$PWD:/work:ro" postgres:17 \
+            psql -h 127.0.0.1 -U postgres -d postgres \
+            -v ON_ERROR_STOP=1 -f /work/tests/audited_transactions_fixture.sql
+      - name: Apply real Phase 1 plus Phase 2 migrations in separate database
+        run: |
+          docker run --rm --network host \
+            -e PGPASSWORD=ci-only-local-password \
+            postgres:17 psql -h 127.0.0.1 -U postgres -d postgres \
+            -v ON_ERROR_STOP=1 -c 'CREATE DATABASE real_schema_compat'
+          docker run --rm --network host \
+            -e PGPASSWORD=ci-only-local-password \
+            -v "$PWD:/work:ro" postgres:17 \
+            psql -h 127.0.0.1 -U postgres -d real_schema_compat \
+            -v ON_ERROR_STOP=1 -f /work/tests/real_schema_compat_fixture.sql
+      - name: Test private immutable publishing on real schema
+        run: |
+          docker run --rm --network host \
+            -e PGPASSWORD=ci-only-local-password \
+            -v "$PWD:/work:ro" postgres:17 \
+            psql -h 127.0.0.1 -U postgres -d real_schema_compat \
+            -v ON_ERROR_STOP=1 -f /work/tests/immutable_publish_fixture.sql
+      - name: Test gated public release snapshot privacy in isolated PostgreSQL
+        run: |
+          docker run --rm --network host \
+            -e PGPASSWORD=ci-only-local-password \
+            -v "$PWD:/work:ro" postgres:17 \
+            psql -h 127.0.0.1 -U postgres -d real_schema_compat \
+            -v ON_ERROR_STOP=1 -f /work/tests/staged_publication_fixture.sql
+      - name: Prepare isolated PostgREST roles and JWT claim reader
+        run: |
+          docker run --rm --network host \
+            -e PGPASSWORD=ci-only-local-password \
+            -v "$PWD:/work:ro" postgres:17 \
+            psql -h 127.0.0.1 -U postgres -d real_schema_compat \
+            -v ON_ERROR_STOP=1 -f /work/tests/postgrest_setup.sql
+      - name: Test PostgREST HTTP JWT RLS and audited RPC
+        run: |
+          docker run --rm -d --name phase2-postgrest --network host \
+            -e PGRST_DB_URI="postgres://authenticator:ci-disposable-postgrest-password@127.0.0.1:5432/real_schema_compat" \
+            -e PGRST_DB_SCHEMAS=public \
+            -e PGRST_DB_ANON_ROLE=anon \
+            -e PGRST_JWT_SECRET=ci-only-postgrest-fixture-secret-at-least-32-chars \
+            -e PGRST_DB_CHANNEL_ENABLED=false \
+            postgrest/postgrest:v14.18
+          trap 'docker logs phase2-postgrest || true; docker stop phase2-postgrest || true' EXIT
+          for i in $(seq 1 40); do
+            if curl -fsS http://127.0.0.1:3000/ >/dev/null 2>&1; then break; fi
+            sleep 1
+          done
+          node tests/postgrest-http.mjs
+
+  isolated-gotrue-auth:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: ci-only-local-password
+          POSTGRES_DB: gotrue_ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d gotrue_ci"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm ci --no-audit --no-fund
+      - name: Test local GoTrue Auth HTTP with real Supabase SSR cookies
+        run: |
+          docker run --rm --network host \
+            -e PGPASSWORD=ci-only-local-password postgres:17 \
+            psql -h 127.0.0.1 -U postgres -d gotrue_ci -v ON_ERROR_STOP=1 \
+            -c 'CREATE SCHEMA IF NOT EXISTS auth'
+          docker run --rm --network host \
+            -e PGPASSWORD=ci-only-local-password postgres:17 \
+            psql -h 127.0.0.1 -U postgres -d gotrue_ci -v ON_ERROR_STOP=1 \
+            -c 'ALTER ROLE postgres IN DATABASE gotrue_ci SET search_path=auth,public'
+          docker run -d --name phase2-gotrue --network host \
+            -e GOTRUE_API_HOST=0.0.0.0 \
+            -e GOTRUE_API_PORT=9999 \
+            -e API_EXTERNAL_URL=http://127.0.0.1:9999 \
+            -e GOTRUE_DB_DRIVER=postgres \
+            -e "GOTRUE_DB_DATABASE_URL=postgres://postgres:ci-only-local-password@127.0.0.1:5432/gotrue_ci?sslmode=disable" \
+            -e GOTRUE_SITE_URL=http://localhost:3000 \
+            -e GOTRUE_DISABLE_SIGNUP=false \
+            -e GOTRUE_EXTERNAL_EMAIL_ENABLED=true \
+            -e GOTRUE_MAILER_AUTOCONFIRM=true \
+            -e GOTRUE_JWT_AUD=authenticated \
+            -e GOTRUE_JWT_DEFAULT_GROUP_NAME=authenticated \
+            -e GOTRUE_JWT_EXP=3600 \
+            -e GOTRUE_JWT_SECRET=ci-only-gotrue-jwt-secret-32-plus-chars \
+            supabase/gotrue:v2.197.0
+          trap 'docker logs phase2-gotrue-restored || true; docker rm -f phase2-gotrue-restored || true; docker logs phase2-postgrest-gotrue || true; docker rm -f phase2-postgrest-gotrue || true; docker logs phase2-gotrue || true; docker rm -f phase2-gotrue || true' EXIT
+          ready=0
+          for i in $(seq 1 60); do
+            if curl -fsS http://127.0.0.1:9999/health >/dev/null 2>&1; then ready=1; break; fi
+            if ! docker inspect -f '{{.State.Running}}' phase2-gotrue 2>/dev/null | grep -q true; then break; fi
+            sleep 1
+          done
+          if [ "$ready" -ne 1 ]; then
+            echo "Isolated GoTrue health check failed" >&2
+            exit 1
+          fi
+          # GoTrue is now ready with its actual auth.users/auth.uid().
+          # Apply the unmodified application migrations in THIS SAME database.
+          docker run --rm --network host \
+            -e PGPASSWORD=ci-only-local-password \
+            -v "$PWD:/work:ro" postgres:17 \
+            psql -h 127.0.0.1 -U postgres -d gotrue_ci \
+            -v ON_ERROR_STOP=1 -f /work/tests/gotrue_full_schema.sql
+          docker run -d --name phase2-postgrest-gotrue --network host \
+            -e "PGRST_DB_URI=postgres://authenticator:ci-disposable-postgrest-password@127.0.0.1:5432/gotrue_ci" \
+            -e PGRST_DB_SCHEMAS=public,storage \
+            -e PGRST_DB_ANON_ROLE=anon \
+            -e PGRST_JWT_SECRET=ci-only-gotrue-jwt-secret-32-plus-chars \
+            -e PGRST_DB_CHANNEL_ENABLED=false \
+            postgrest/postgrest:v14.18
+          api_ready=0
+          for i in $(seq 1 40); do
+            if curl -fsS http://127.0.0.1:3000/ >/dev/null 2>&1; then api_ready=1; break; fi
+            sleep 1
+          done
+          if [ "$api_ready" -ne 1 ]; then
+            echo "GoTrue-linked PostgREST did not become ready" >&2
+            exit 1
+          fi
+          node tests/gotrue-auth-http.mjs
+          # Database-only recovery: GoTrue identities, drafts, audit events,
+          # and private Storage *metadata*. Actual file bytes are not tested.
+          # The dump never leaves the ephemeral Actions runner.
+          docker run --rm --network host \
+            -e PGPASSWORD=ci-only-local-password \
+            -v "$RUNNER_TEMP:/backup" postgres:17 \
+            pg_dump -h 127.0.0.1 -U postgres -d gotrue_ci \
+              --format=custom --no-owner --no-acl \
+              -f /backup/phase2-gotrue-recovery.dump
+          docker run --rm --network host \
+            -e PGPASSWORD=ci-only-local-password postgres:17 \
+            psql -h 127.0.0.1 -U postgres -d gotrue_ci \
+              -v ON_ERROR_STOP=1 -c 'CREATE DATABASE gotrue_restored_ci'
+          docker run --rm --network host \
+            -e PGPASSWORD=ci-only-local-password \
+            -v "$RUNNER_TEMP:/backup:ro" postgres:17 \
+            pg_restore -h 127.0.0.1 -U postgres -d gotrue_restored_ci \
+              --exit-on-error --no-owner --no-acl /backup/phase2-gotrue-recovery.dump
+          docker run --rm --network host \
+            -e PGPASSWORD=ci-only-local-password \
+            -v "$PWD:/work:ro" postgres:17 \
+            psql -h 127.0.0.1 -U postgres -d gotrue_restored_ci \
+              -v ON_ERROR_STOP=1 -f /work/tests/restored_auth_storage_metadata.sql
+          docker run --rm --network host \
+            -e PGPASSWORD=ci-only-local-password postgres:17 \
+            psql -h 127.0.0.1 -U postgres -d gotrue_restored_ci \
+              -v ON_ERROR_STOP=1 \
+              -c 'ALTER ROLE postgres IN DATABASE gotrue_restored_ci SET search_path=auth,public'
+          docker run -d --name phase2-gotrue-restored --network host \
+            -e GOTRUE_API_HOST=0.0.0.0 \
+            -e GOTRUE_API_PORT=9998 \
+            -e API_EXTERNAL_URL=http://127.0.0.1:9998 \
+            -e GOTRUE_DB_DRIVER=postgres \
+            -e "GOTRUE_DB_DATABASE_URL=postgres://postgres:ci-only-local-password@127.0.0.1:5432/gotrue_restored_ci?sslmode=disable" \
+            -e GOTRUE_SITE_URL=http://localhost:3000 \
+            -e GOTRUE_DISABLE_SIGNUP=false \
+            -e GOTRUE_EXTERNAL_EMAIL_ENABLED=true \
+            -e GOTRUE_MAILER_AUTOCONFIRM=true \
+            -e GOTRUE_JWT_AUD=authenticated \
+            -e GOTRUE_JWT_EXP=3600 \
+            -e GOTRUE_JWT_SECRET=ci-only-gotrue-jwt-secret-32-plus-chars \
+            supabase/gotrue:v2.197.0
+          restored_ready=0
+          for i in $(seq 1 40); do
+            if curl -fsS http://127.0.0.1:9998/health >/dev/null 2>&1; then restored_ready=1; break; fi
+            if ! docker inspect -f '{{.State.Running}}' phase2-gotrue-restored 2>/dev/null | grep -q true; then break; fi
+            sleep 1
+          done
+          if [ "$restored_ready" -ne 1 ]; then
+            echo "Restored GoTrue health check failed" >&2
+            exit 1
+          fi
+          expected_owner="$(docker run --rm --network host \
+            -e PGPASSWORD=ci-only-local-password postgres:17 \
+            psql -h 127.0.0.1 -U postgres -d gotrue_restored_ci \
+              -At -c 'SELECT auth_user_id FROM public.owner_config WHERE singleton')"
+          EXPECTED_RESTORED_OWNER_UUID="$expected_owner" node tests/gotrue-restored-login.mjs
+          rm -f "$RUNNER_TEMP/phase2-gotrue-recovery.dump"
+
+  isolated-storage-http:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: ci-only-local-password
+          POSTGRES_DB: storage_http_ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d storage_http_ci"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Run actual Supabase Storage HTTP API with disposable file backend
+        run: |
+          mkdir -p "$RUNNER_TEMP/storage-binary-data"
+          docker run --rm --network host \
+            -e PGPASSWORD=ci-only-local-password postgres:17 \
+            psql -h 127.0.0.1 -U postgres -d storage_http_ci -v ON_ERROR_STOP=1 \
+              -c 'CREATE SCHEMA IF NOT EXISTS auth'
+          docker run -d --name phase2-storage-http --network host \
+            -e SERVER_PORT=5000 \
+            -e "DATABASE_URL=postgresql://postgres:ci-only-local-password@127.0.0.1:5432/storage_http_ci?sslmode=disable" \
+            -e DB_INSTALL_ROLES=true \
+            -e DB_SUPER_USER=postgres \
+            -e AUTH_JWT_SECRET=ci-only-real-storage-signing-secret-at-least-32-chars \
+            -e AUTH_JWT_ALGORITHM=HS256 \
+            -e STORAGE_BACKEND=file \
+            -e STORAGE_FILE_BACKEND_PATH=/var/lib/storage \
+            -e FILE_STORAGE_BACKEND_PATH=/var/lib/storage \
+            -e STORAGE_PUBLIC_URL=http://127.0.0.1:5000 \
+            -e TENANT_ID=ci-only \
+            -e REGION=local \
+            -e FILE_SIZE_LIMIT=5242880 \
+            -e GLOBAL_S3_BUCKET=ci-only-storage \
+            -e IMAGE_TRANSFORMATION_ENABLED=false \
+            -e ENABLE_IMAGE_TRANSFORMATION=false \
+            -v "$RUNNER_TEMP/storage-binary-data:/var/lib/storage" \
+            supabase/storage-api:v1.81.0
+          trap 'docker logs phase2-gotrue-storage || true; docker rm -f phase2-gotrue-storage || true; docker logs phase2-storage-http-restored || true; docker rm -f phase2-storage-http-restored || true; docker logs phase2-storage-http || true; docker rm -f phase2-storage-http || true; rm -f "$RUNNER_TEMP/storage-api-recovery.dump"' EXIT
+          ready=0
+          for i in $(seq 1 60); do
+            if curl -fsS http://127.0.0.1:5000/status >/dev/null 2>&1; then ready=1; break; fi
+            if ! docker inspect -f '{{.State.Running}}' phase2-storage-http 2>/dev/null | grep -q true; then break; fi
+            sleep 1
+          done
+          if [ "$ready" -ne 1 ]; then
+            echo "Isolated Storage API failed health check" >&2
+            exit 1
+          fi
+          docker run --rm --network host \
+            -e PGPASSWORD=ci-only-local-password \
+            -v "$PWD:/work:ro" postgres:17 \
+            psql -h 127.0.0.1 -U postgres -d storage_http_ci \
+              -v ON_ERROR_STOP=1 -f /work/tests/storage_api_real_schema.sql
+          node tests/storage-api-http.mjs
+          # Full disposable file recovery: back up BOTH PostgreSQL metadata
+          # and actual Storage filesystem bytes, then restore independently.
+          # Neither the database dump nor any image leaves the Actions runner.
+          mkdir -p "$RUNNER_TEMP/storage-restored-files"
+          cp -a "$RUNNER_TEMP/storage-binary-data/." "$RUNNER_TEMP/storage-restored-files/"
+          file_count="$(find "$RUNNER_TEMP/storage-restored-files" -type f | wc -l)"
+          test "$file_count" -gt 0 || { echo "Storage backend file bytes missing" >&2; exit 1; }
+          docker run --rm --network host \
+            -e PGPASSWORD=ci-only-local-password \
+            -v "$RUNNER_TEMP:/backup" postgres:17 \
+            pg_dump -h 127.0.0.1 -U postgres -d storage_http_ci \
+              --format=custom --no-owner \
+              -f /backup/storage-api-recovery.dump
+          docker run --rm --network host \
+            -e PGPASSWORD=ci-only-local-password postgres:17 \
+            psql -h 127.0.0.1 -U postgres -d storage_http_ci \
+              -v ON_ERROR_STOP=1 -c 'CREATE DATABASE storage_http_restored'
+          docker run --rm --network host \
+            -e PGPASSWORD=ci-only-local-password \
+            -v "$RUNNER_TEMP:/backup:ro" postgres:17 \
+            pg_restore -h 127.0.0.1 -U postgres -d storage_http_restored \
+              --exit-on-error --no-owner /backup/storage-api-recovery.dump
+          docker run -d --name phase2-storage-http-restored --network host \
+            -e SERVER_PORT=5002 \
+            -e "DATABASE_URL=postgresql://postgres:ci-only-local-password@127.0.0.1:5432/storage_http_restored?sslmode=disable" \
+            -e DB_INSTALL_ROLES=true \
+            -e DB_SUPER_USER=postgres \
+            -e AUTH_JWT_SECRET=ci-only-real-storage-signing-secret-at-least-32-chars \
+            -e AUTH_JWT_ALGORITHM=HS256 \
+            -e STORAGE_BACKEND=file \
+            -e STORAGE_FILE_BACKEND_PATH=/var/lib/storage \
+            -e FILE_STORAGE_BACKEND_PATH=/var/lib/storage \
+            -e STORAGE_PUBLIC_URL=http://127.0.0.1:5002 \
+            -e TENANT_ID=ci-only \
+            -e REGION=local \
+            -e FILE_SIZE_LIMIT=5242880 \
+            -e GLOBAL_S3_BUCKET=ci-only-storage \
+            -e IMAGE_TRANSFORMATION_ENABLED=false \
+            -e ENABLE_IMAGE_TRANSFORMATION=false \
+            -v "$RUNNER_TEMP/storage-restored-files:/var/lib/storage" \
+            supabase/storage-api:v1.81.0
+          restored_ready=0
+          for i in $(seq 1 60); do
+            if curl -fsS http://127.0.0.1:5002/status >/dev/null 2>&1; then restored_ready=1; break; fi
+            if ! docker inspect -f '{{.State.Running}}' phase2-storage-http-restored 2>/dev/null | grep -q true; then break; fi
+            sleep 1
+          done
+          test "$restored_ready" -eq 1 || { echo "Restored Storage HTTP service failed" >&2; exit 1; }
+          node tests/storage-api-restored-http.mjs
+          # Independent real GoTrue is started with a second disposable Auth DB.
+          # Actual signed JWTs cross the HTTP boundary into the running Storage
+          # API. Only test identity IDs are synchronized into Storage's app DB.
+          docker run --rm --network host \
+            -e PGPASSWORD=ci-only-local-password postgres:17 \
+            psql -h 127.0.0.1 -U postgres -d storage_http_ci \
+              -v ON_ERROR_STOP=1 -c 'CREATE DATABASE gotrue_storage_ci'
+          docker run --rm --network host \
+            -e PGPASSWORD=ci-only-local-password postgres:17 \
+            psql -h 127.0.0.1 -U postgres -d gotrue_storage_ci \
+              -v ON_ERROR_STOP=1 -c 'CREATE SCHEMA IF NOT EXISTS auth'
+          docker run --rm --network host \
+            -e PGPASSWORD=ci-only-local-password postgres:17 \
+            psql -h 127.0.0.1 -U postgres -d gotrue_storage_ci \
+              -v ON_ERROR_STOP=1 \
+              -c 'ALTER ROLE postgres IN DATABASE gotrue_storage_ci SET search_path=auth,public'
+          docker run -d --name phase2-gotrue-storage --network host \
+            -e GOTRUE_API_HOST=0.0.0.0 \
+            -e GOTRUE_API_PORT=9999 \
+            -e API_EXTERNAL_URL=http://127.0.0.1:9999 \
+            -e GOTRUE_DB_DRIVER=postgres \
+            -e "GOTRUE_DB_DATABASE_URL=postgres://postgres:ci-only-local-password@127.0.0.1:5432/gotrue_storage_ci?sslmode=disable" \
+            -e GOTRUE_SITE_URL=http://localhost:3000 \
+            -e GOTRUE_DISABLE_SIGNUP=false \
+            -e GOTRUE_EXTERNAL_EMAIL_ENABLED=true \
+            -e GOTRUE_MAILER_AUTOCONFIRM=true \
+            -e GOTRUE_JWT_AUD=authenticated \
+            -e GOTRUE_JWT_DEFAULT_GROUP_NAME=authenticated \
+            -e GOTRUE_JWT_EXP=3600 \
+            -e GOTRUE_JWT_SECRET=ci-only-real-storage-signing-secret-at-least-32-chars \
+            supabase/gotrue:v2.197.0
+          gotrue_ready=0
+          for i in $(seq 1 60); do
+            if curl -fsS http://127.0.0.1:9999/health >/dev/null 2>&1; then gotrue_ready=1; break; fi
+            if ! docker inspect -f '{{.State.Running}}' phase2-gotrue-storage 2>/dev/null | grep -q true; then break; fi
+            sleep 1
+          done
+          test "$gotrue_ready" -eq 1 || { echo "Real GoTrue for Storage JWT test failed" >&2; exit 1; }
+          node tests/gotrue-storage-http.mjs
+          rm -f "$RUNNER_TEMP/storage-api-recovery.dump"
+
+  isolated-shared-auth-storage:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: ci-only-local-password
+          POSTGRES_DB: storage_http_ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d storage_http_ci"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm ci --no-audit --no-fund
+      - name: Build isolated Next.js HTTP server against localhost-only Supabase gateway
+        run: npm run build
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: http://127.0.0.1:54321
+          NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: sb_publishable_ci_disposable_not_real
+          OWNER_AUTH_USER_ID: 00000000-0000-0000-0000-000000000000
+      - name: Verify real GoTrue and Storage HTTP share one temporary PostgreSQL database
+        run: |
+          mkdir -p "$RUNNER_TEMP/storage-shared-files"
+          trap 'docker logs phase2-shared-postgrest || true; docker rm -f phase2-shared-postgrest || true; docker logs phase2-shared-storage || true; docker rm -f phase2-shared-storage || true; docker logs phase2-shared-gotrue || true; docker rm -f phase2-shared-gotrue || true' EXIT
+          docker run --rm --network host \
+            -e PGPASSWORD=ci-only-local-password postgres:17 \
+            psql -h 127.0.0.1 -U postgres -d storage_http_ci \
+              -v ON_ERROR_STOP=1 -c 'CREATE SCHEMA IF NOT EXISTS auth'
+          docker run --rm --network host \
+            -e PGPASSWORD=ci-only-local-password postgres:17 \
+            psql -h 127.0.0.1 -U postgres -d storage_http_ci \
+              -v ON_ERROR_STOP=1 \
+              -c 'ALTER ROLE postgres IN DATABASE storage_http_ci SET search_path=auth,public'
+          docker run -d --name phase2-shared-gotrue --network host \
+            -e GOTRUE_API_HOST=0.0.0.0 \
+            -e GOTRUE_API_PORT=9999 \
+            -e API_EXTERNAL_URL=http://127.0.0.1:9999 \
+            -e GOTRUE_DB_DRIVER=postgres \
+            -e "GOTRUE_DB_DATABASE_URL=postgres://postgres:ci-only-local-password@127.0.0.1:5432/storage_http_ci?sslmode=disable" \
+            -e GOTRUE_SITE_URL=http://localhost:3000 \
+            -e GOTRUE_DISABLE_SIGNUP=false \
+            -e GOTRUE_EXTERNAL_EMAIL_ENABLED=true \
+            -e GOTRUE_MAILER_AUTOCONFIRM=true \
+            -e GOTRUE_JWT_AUD=authenticated \
+            -e GOTRUE_JWT_DEFAULT_GROUP_NAME=authenticated \
+            -e GOTRUE_JWT_EXP=3600 \
+            -e GOTRUE_JWT_SECRET=ci-only-real-storage-signing-secret-at-least-32-chars \
+            supabase/gotrue:v2.197.0
+          ready=0
+          for i in $(seq 1 60); do
+            if curl -fsS http://127.0.0.1:9999/health >/dev/null 2>&1; then ready=1; break; fi
+            if ! docker inspect -f '{{.State.Running}}' phase2-shared-gotrue 2>/dev/null | grep -q true; then break; fi
+            sleep 1
+          done
+          test "$ready" -eq 1 || { echo "Shared GoTrue failed health check" >&2; exit 1; }
+          docker run -d --name phase2-shared-storage --network host \
+            -e SERVER_PORT=5000 \
+            -e "DATABASE_URL=postgresql://postgres:ci-only-local-password@127.0.0.1:5432/storage_http_ci?sslmode=disable" \
+            -e DB_INSTALL_ROLES=true \
+            -e DB_SUPER_USER=postgres \
+            -e AUTH_JWT_SECRET=ci-only-real-storage-signing-secret-at-least-32-chars \
+            -e AUTH_JWT_ALGORITHM=HS256 \
+            -e STORAGE_BACKEND=file \
+            -e STORAGE_FILE_BACKEND_PATH=/var/lib/storage \
+            -e FILE_STORAGE_BACKEND_PATH=/var/lib/storage \
+            -e STORAGE_PUBLIC_URL=http://127.0.0.1:5000 \
+            -e TENANT_ID=ci-only \
+            -e REGION=local \
+            -e FILE_SIZE_LIMIT=5242880 \
+            -e GLOBAL_S3_BUCKET=ci-only-storage \
+            -e IMAGE_TRANSFORMATION_ENABLED=false \
+            -e ENABLE_IMAGE_TRANSFORMATION=false \
+            -v "$RUNNER_TEMP/storage-shared-files:/var/lib/storage" \
+            supabase/storage-api:v1.81.0
+          storage_ready=0
+          for i in $(seq 1 60); do
+            if curl -fsS http://127.0.0.1:5000/status >/dev/null 2>&1; then storage_ready=1; break; fi
+            if ! docker inspect -f '{{.State.Running}}' phase2-shared-storage 2>/dev/null | grep -q true; then break; fi
+            sleep 1
+          done
+          test "$storage_ready" -eq 1 || { echo "Shared Storage HTTP failed health check" >&2; exit 1; }
+          docker run --rm --network host \
+            -e PGPASSWORD=ci-only-local-password \
+            -v "$PWD:/work:ro" postgres:17 \
+            psql -h 127.0.0.1 -U postgres -d storage_http_ci \
+              -v ON_ERROR_STOP=1 -f /work/tests/shared_gotrue_storage_schema.sql
+          docker run -d --name phase2-shared-postgrest --network host \
+            -e "PGRST_DB_URI=postgres://authenticator:ci-disposable-postgrest-password@127.0.0.1:5432/storage_http_ci" \
+            -e PGRST_DB_SCHEMAS=public \
+            -e PGRST_DB_ANON_ROLE=anon \
+            -e PGRST_JWT_SECRET=ci-only-real-storage-signing-secret-at-least-32-chars \
+            -e PGRST_DB_CHANNEL_ENABLED=false \
+            postgrest/postgrest:v14.18
+          rest_ready=0
+          for i in $(seq 1 40); do
+            if curl -fsS http://127.0.0.1:3000/ >/dev/null 2>&1; then rest_ready=1; break; fi
+            if ! docker inspect -f '{{.State.Running}}' phase2-shared-postgrest 2>/dev/null | grep -q true; then break; fi
+            sleep 1
+          done
+          test "$rest_ready" -eq 1 || { echo "Shared PostgREST failed health check" >&2; exit 1; }
+          SHARED_GOTRUE_STORAGE_DB=true node tests/gotrue-storage-http.mjs
+          node tests/next-http-e2e.mjs
 
   bootstrap-vinext:
     if: github.event_name == 'push' && github.ref == 'refs/heads/feature/phase-1-foundation'
@@ -85,7 +549,7 @@ jobs:
         if: steps.detect.outputs.ready == 'false'
         run: npm run build:vinext
         env:
-          NEXT_PUBLIC_SUPABASE_URL: https://mmbhuxiejfqipttyujop.supabase.co
+          NEXT_PUBLIC_SUPABASE_URL: https://hfsvnbbckfugrxugrnuc.supabase.co
           NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: sb_publishable_placeholder_only
           OWNER_AUTH_USER_ID: 00000000-0000-0000-0000-000000000000
       - name: Commit generated configuration
