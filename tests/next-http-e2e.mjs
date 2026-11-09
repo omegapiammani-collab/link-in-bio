@@ -204,6 +204,8 @@ try{
   assert.deepEqual(emptyList.data.pages,[],
     'read-only list should be empty before the Next HTTP fixture creates a page');
   await ownerBrowser.page.goto(app+'/admin');
+  assert.equal(await ownerBrowser.page.getByText('เครื่องมือจัดหน้าเป็นตัวอย่างส่วนตัว ยังไม่บันทึกหรือเผยแพร่').count(),1);
+  assert.equal(await ownerBrowser.page.getByText('รายการหน้าแสดงข้อมูลส่วนตัวแบบอ่านอย่างเดียว').count(),1);
   await ownerBrowser.page.getByRole('link',{name:/ดูรายการหน้าทั้งหมด/}).click();
   await ownerBrowser.page.waitForURL(/\/admin\/pages$/);
   assert.match(ownerBrowser.page.url(),/\/admin\/pages$/);
@@ -242,6 +244,8 @@ try{
   assert.equal(access.status,200,JSON.stringify(access.data).slice(0,700));
   assert.ok(String(access.data).includes('แผงควบคุม'),
     'Owner page did not render dashboard');
+  assert.ok(String(access.data).includes('โหมดทดสอบฉบับร่าง'),
+    'Owner dashboard did not describe enabled draft test mode');
 
   const document={name:'Next HTTP Owner',description:'',links:[]};
   const deniedCrossOrigin=await call('/api/admin/pages',{
@@ -497,6 +501,11 @@ try{
   assert.equal(await ownerBrowser.page.getByText('ยังไม่มีหน้าที่แสดงในรายการ').count(),0);
   assert.equal(await ownerBrowser.page.getByRole('link',{name:/เปิดตัวแก้ไขฉบับร่าง/}).count(),0);
   assert.equal(await ownerBrowser.page.getByRole('link',{name:/สร้างหน้าฉบับร่างใหม่/}).count(),0);
+  await ownerBrowser.page.setViewportSize({width:390,height:844});
+  assert.ok(await ownerBrowser.page.evaluate(() =>
+    document.documentElement.scrollWidth <= window.innerWidth),
+    'Owner Page List overflows a narrow mobile viewport');
+  assert.equal(await ownerBrowser.page.getByRole('heading',{name:'หน้าทั้งหมด'}).count(),1);
   assert.deepEqual(ownerBrowser.errors,[],'populated-state browser page errors');
   const foreignRows=await fetch(base+'/rest/v1/pages?select=id,slug',{
     headers:{authorization:'Bearer '+other.token}
@@ -526,6 +535,7 @@ try{
   assert.ok([302,303,307,308].includes(disabledUi.status));
   assert.match(disabledUi.headers.get('location')??'',/\/admin$/);
   await ownerBrowser.page.goto(app+'/admin');
+  assert.equal(await ownerBrowser.page.getByText('เครื่องมือจัดหน้าเป็นตัวอย่างส่วนตัว ยังไม่บันทึกหรือเผยแพร่').count(),1);
   assert.equal(await ownerBrowser.page.getByRole('link',{name:/ดูรายการหน้าทั้งหมด/}).count(),0);
 
   // Sign-out of a real GoTrue SSR session clears the request cookie jar.
