@@ -2,6 +2,13 @@
 
 **Status:** Staged Owner editor, audited draft transactions, gated publication, immutable public renderer and private media APIs are implemented on `feature/phase-2-editor-foundation`. Isolated CI covers the core; **production acceptance remains BLOCKED** by real Google OAuth, hosted deployment parity, operations and release approval. `main` and Production remain unchanged. See `docs/PHASE2_RELEASE_GATES.md`.
 
+## Owner Page List browser acceptance — 9 November 2026
+
+- [x] The disposable shared GoTrue, PostgREST, Storage and Next.js CI stack now runs Chromium against the actual Owner UI. It verifies dashboard-to-list navigation, the empty state before the test page is created, the populated state afterward, and anonymous/Non-Owner redirects to login.
+- [x] Both browser list checks run with only `PHASE2_PAGE_LIST_ENABLED=true`; Draft Write, page creation, Publish, Public Read and media flags are OFF. The test seeds synthetic data separately in the disposable CI database, then compares page, draft and audit rows before and after read-only requests.
+- [x] [Push Run #561](https://github.com/omegapiammani-collab/link-in-bio/actions/runs/42607572755) and [PR Run #562](https://github.com/omegapiammani-collab/link-in-bio/actions/runs/42607579462) passed all active jobs. The Chromium job log prints `PASS: Chromium empty/populated Owner Page List navigation and Non-Owner denial`.
+- [ ] These checks use synthetic password users and a local CI browser. Real Google OAuth, hosted Cloudflare/Supabase parity, operational backups and production release approval remain open. No hosted flag, secret, database or deployment was changed.
+
 ## Delivered in this initial slice
 
 - Owner-gated `/admin/editor` via the same server-side authorization helper as `/admin`.
