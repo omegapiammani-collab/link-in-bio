@@ -417,6 +417,18 @@ try{
     body:{slug:'browser-readonly-draft',document}
   });
   assert.equal(browserDraft.status,201,JSON.stringify(browserDraft.data));
+  // Prepare a 50-row boundary and one soft-deleted page using the privileged
+  // disposable database fixture, never an application write path.
+  execFileSync('docker',[
+    'run','--rm','--network','host','-e','PGPASSWORD=ci-only-local-password',
+    'postgres:17','psql','-h','127.0.0.1','-U','postgres','-d','storage_http_ci',
+    '-v','ON_ERROR_STOP=1','-c',
+    "INSERT INTO public.pages(slug,status,visibility,updated_at) "+
+    "SELECT 'browser-list-'||lpad(n::text,2,'0'),'draft','unlisted',"+
+    "now()-interval '1 day'+n*interval '1 second' FROM generate_series(1,55) n;"+
+    "INSERT INTO public.pages(slug,status,visibility,updated_at,deleted_at) "+
+    "VALUES('browser-list-deleted','draft','unlisted',now()+interval '1 day',now())"
+  ],{stdio:'pipe'});
 
   // Run the actual Owner list against disposable GoTrue and PostgREST with
   // every write and public-release switch off. Reads must leave DB rows intact.
@@ -454,7 +466,15 @@ try{
   assert.equal(readOnlyList.status,200,JSON.stringify(readOnlyList.data));
   assert.match(readOnlyList.headers.get('cache-control')??'',/no-store/);
   assert.equal(readOnlyList.data.cappedAt,50);
-  assert.ok(readOnlyList.data.pages.length<=50);
+  assert.equal(readOnlyList.data.pages.length,50);
+  assert.ok(readOnlyList.data.pages.every((row,index,rows)=>index===0 ||
+    Date.parse(rows[index-1].updated_at)>=Date.parse(row.updated_at)),
+    'Owner list is not ordered newest first');
+  assert.ok(readOnlyList.data.pages.some(row=>row.slug==='browser-list-55'));
+  assert.ok(!readOnlyList.data.pages.some(row=>row.slug==='browser-list-01'),
+    'oldest row exceeded the 50-page cap');
+  assert.ok(!readOnlyList.data.pages.some(row=>row.slug==='browser-list-deleted'),
+    'soft-deleted page leaked into the Owner list');
   const listed=readOnlyList.data.pages.find(row=>row.id===pageId);
   assert.ok(listed,'Owner list omitted the existing private page');
   assert.deepEqual(Object.keys(listed).sort(),
@@ -471,6 +491,9 @@ try{
   await ownerBrowser.page.getByRole('heading',{name:'หน้าทั้งหมด'}).waitFor();
   assert.equal(await ownerBrowser.page.getByText(slug,{exact:true}).count(),1);
   assert.equal(await ownerBrowser.page.getByText('browser-readonly-draft',{exact:true}).count(),1);
+  assert.equal(await ownerBrowser.page.getByText('browser-list-55',{exact:true}).count(),1);
+  assert.equal(await ownerBrowser.page.getByText('browser-list-01',{exact:true}).count(),0);
+  assert.equal(await ownerBrowser.page.getByText('browser-list-deleted',{exact:true}).count(),0);
   assert.equal(await ownerBrowser.page.getByText('ยังไม่มีหน้าที่แสดงในรายการ').count(),0);
   assert.equal(await ownerBrowser.page.getByRole('link',{name:/เปิดตัวแก้ไขฉบับร่าง/}).count(),0);
   assert.equal(await ownerBrowser.page.getByRole('link',{name:/สร้างหน้าฉบับร่างใหม่/}).count(),0);
@@ -493,6 +516,17 @@ try{
     'public render was available with release flag disabled');
   assert.deepEqual(await databaseSnapshot(),beforeRead,
     'Owner Page List or denied requests changed pages, drafts, or audit rows');
+
+  await stopServer();
+  await startServer({...readOnlyEnv,PHASE2_PAGE_LIST_ENABLED:'false'});
+  const disabledList=await call('/api/admin/pages',{cookie:owner.cookie});
+  assert.equal(disabledList.status,404);
+  assert.deepEqual(disabledList.data,{error:'unavailable'});
+  const disabledUi=await call('/admin/pages',{cookie:owner.cookie});
+  assert.ok([302,303,307,308].includes(disabledUi.status));
+  assert.match(disabledUi.headers.get('location')??'',/\/admin$/);
+  await ownerBrowser.page.goto(app+'/admin');
+  assert.equal(await ownerBrowser.page.getByRole('link',{name:/ดูรายการหน้าทั้งหมด/}).count(),0);
 
   // Sign-out of a real GoTrue SSR session clears the request cookie jar.
   // The protected Next route must reject a browser after local logout.
@@ -519,7 +553,7 @@ try{
     'signed-out browser still reached admin');
   assert.match(afterLogout.headers.get('location')??'',/\/login/);
 
-  console.log('PASS: Chromium empty/populated Owner Page List navigation and Non-Owner denial, read-only Next HTTP, real GoTrue SSR cookies, PostgREST RLS, CSRF, CAS and explicit immutable publish privacy');
+  console.log('PASS: Chromium empty/populated Owner Page List, 50-row boundary, soft-delete and default-off denial, real GoTrue SSR cookies, PostgREST RLS, CSRF, CAS and explicit immutable publish privacy');
 } finally {
   if(browser)await browser.close();
   await stopServer();
