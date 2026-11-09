@@ -76,6 +76,7 @@ async function signIn(email){
   assert.ok(cookieJar.size,'Supabase SSR SDK did not write cookies');
   return {
     user:data.user,
+    token:data.session?.access_token,
     cookie:[...cookieJar].map(([name,value])=>
       encodeURIComponent(name)+'='+encodeURIComponent(value)).join('; ')
   };
@@ -120,7 +121,7 @@ const env={
   PHASE2_MEDIA_UPLOAD_ENABLED:'true',
   PHASE2_MEDIA_SIGN_ENABLED:'true'
 };
-const server=spawn(process.execPath,['node_modules/next/dist/bin/next','start','-p',String(appPort),'-H','localhost'],{
+let server=spawn(process.execPath,['node_modules/next/dist/bin/next','start','-p',String(appPort),'-H','localhost'],{
   env,stdio:['ignore','pipe','pipe']
 });
 let serverOutput='';
@@ -351,6 +352,96 @@ try{
   assert.deepEqual(Buffer.from(await signedImage.arrayBuffer()),png,
     'signed media URL content differs from uploaded bytes');
 
+  // Run the actual Owner list against disposable GoTrue and PostgREST with
+  // every write and public-release switch off. Reads must leave DB rows intact.
+  async function databaseSnapshot(){
+    const result={};
+    for(const [table,columns] of [
+      ['pages','id,slug,status,visibility,updated_at'],
+      ['page_drafts','page_id,revision,updated_at'],
+      ['audit_events','id,event_type,entity_id']
+    ]){
+      const response=await fetch(base+'/rest/v1/'+table+'?select='+columns+'&order='+
+        (table==='pages'?'id':table==='page_drafts'?'page_id':'id')+'.asc',{
+        headers:{authorization:'Bearer '+owner.token}
+      });
+      const body=await response.text();
+      assert.equal(response.status,200,table+' snapshot failed: '+body);
+      result[table]=JSON.parse(body);
+    }
+    return result;
+  }
+  assert.ok(owner.token,'Owner must have a real GoTrue JWT');
+  const beforeRead=await databaseSnapshot();
+  server.kill('SIGTERM');
+  await new Promise(resolve=>server.once('exit',resolve));
+  const readOnlyEnv={
+    ...env,
+    PHASE2_PAGE_CREATE_ENABLED:'false',
+    PHASE2_DRAFT_WRITE_ENABLED:'false',
+    PHASE2_PUBLISH_ENABLED:'false',
+    PHASE2_PUBLIC_RENDER_ENABLED:'false',
+    PHASE2_MEDIA_UPLOAD_ENABLED:'false',
+    PHASE2_MEDIA_SIGN_ENABLED:'false'
+  };
+  server=spawn(process.execPath,
+    ['node_modules/next/dist/bin/next','start','-p',String(appPort),'-H','localhost'],
+    {env:readOnlyEnv,stdio:['ignore','pipe','pipe']});
+  let readOnlyOutput='';
+  for(const stream of [server.stdout,server.stderr])
+    stream.on('data',data=>{readOnlyOutput+=data.toString();});
+  let readOnlyReady=false;
+  for(let i=0;i<80;i++){
+    if(server.exitCode!==null)break;
+    try{
+      const response=await fetch(app+'/login',{redirect:'manual'});
+      if(response.status===200){readOnlyReady=true;break;}
+    }catch{}
+    await new Promise(resolve=>setTimeout(resolve,500));
+  }
+  assert.ok(readOnlyReady,'Read-only Next server never became ready: '+readOnlyOutput);
+
+  for(const cookie of [undefined,other.cookie]){
+    const denied=await call('/api/admin/pages',{cookie});
+    assert.equal(denied.status,403,JSON.stringify(denied.data));
+    assert.deepEqual(denied.data,{error:'forbidden'});
+    const deniedUi=await call('/admin/pages',{cookie});
+    assert.ok([302,303,307,308].includes(deniedUi.status));
+    assert.match(deniedUi.headers.get('location')??'',/\/login/);
+  }
+  const readOnlyList=await call('/api/admin/pages',{cookie:owner.cookie});
+  assert.equal(readOnlyList.status,200,JSON.stringify(readOnlyList.data));
+  assert.match(readOnlyList.headers.get('cache-control')??'',/no-store/);
+  assert.equal(readOnlyList.data.cappedAt,50);
+  assert.ok(readOnlyList.data.pages.length<=50);
+  const listed=readOnlyList.data.pages.find(row=>row.id===pageId);
+  assert.ok(listed,'Owner list omitted the existing private page');
+  assert.deepEqual(Object.keys(listed).sort(),
+    ['id','slug','status','visibility','updated_at'].sort());
+  assert.equal(listed.slug,slug);
+  const readOnlyUi=await call('/admin/pages',{cookie:owner.cookie});
+  assert.equal(readOnlyUi.status,200);
+  assert.ok(String(readOnlyUi.data).includes(slug));
+  assert.ok(!String(readOnlyUi.data).includes('เปิดตัวแก้ไขฉบับร่าง'));
+  const foreignRows=await fetch(base+'/rest/v1/pages?select=id,slug',{
+    headers:{authorization:'Bearer '+other.token}
+  });
+  assert.equal(foreignRows.status,200);
+  assert.deepEqual(await foreignRows.json(),[],
+    'Non-Owner must not read page metadata directly through PostgREST');
+  for(const [path,method,body] of [
+    ['/api/admin/pages','POST',{slug:'read-only-denied',document}],
+    ['/api/admin/drafts/'+pageId,'PATCH',{expectedRevision:3,document}],
+    ['/api/admin/publish/'+pageId,'POST',{expectedRevision:3,makePublic:true}]
+  ]){
+    const denied=await call(path,{cookie:owner.cookie,method,body});
+    assert.equal(denied.status,404,path+' was available with write flags disabled');
+  }
+  assert.equal((await call('/'+slug)).status,404,
+    'public render was available with release flag disabled');
+  assert.deepEqual(await databaseSnapshot(),beforeRead,
+    'Owner Page List or denied requests changed pages, drafts, or audit rows');
+
   // Sign-out of a real GoTrue SSR session clears the request cookie jar.
   // The protected Next route must reject a browser after local logout.
   const jar=new Map(owner.cookie.split('; ').map(piece=>{
@@ -376,7 +467,7 @@ try{
     'signed-out browser still reached admin');
   assert.match(afterLogout.headers.get('location')??'',/\/login/);
 
-  console.log('PASS: actual Next HTTP /admin and guarded APIs, real GoTrue SSR cookies, PostgREST RLS, CSRF, CAS and explicit immutable publish privacy');
+  console.log('PASS: actual Next HTTP /admin and guarded APIs, Owner/Non-Owner read-only page list, real GoTrue SSR cookies, PostgREST RLS, CSRF, CAS and explicit immutable publish privacy');
 } finally {
   server.kill('SIGTERM');
   await new Promise(resolve=>{

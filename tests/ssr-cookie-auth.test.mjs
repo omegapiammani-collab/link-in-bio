@@ -69,6 +69,8 @@ test('SSR cookies persist across server clients; getUser authorizes exact Owner'
     email: 'isolated@example.invalid', password: 'fixture-only'
   });
   assert.equal(error, null);
+  // Auth's state-change subscriber applies SSR cookies asynchronously.
+  await new Promise(resolve => setImmediate(resolve));
   assert.ok(env.cookies.size > 0, 'server SDK must write cookie-backed session');
   const restored = await verifyOwnerSession(env.client(), owner);
   assert.equal(restored?.id, owner);
