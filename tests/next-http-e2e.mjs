@@ -205,6 +205,7 @@ try{
     'read-only list should be empty before the Next HTTP fixture creates a page');
   await ownerBrowser.page.goto(app+'/admin');
   await ownerBrowser.page.getByRole('link',{name:/ดูรายการหน้าทั้งหมด/}).click();
+  await ownerBrowser.page.waitForURL(/\/admin\/pages$/);
   assert.match(ownerBrowser.page.url(),/\/admin\/pages$/);
   await ownerBrowser.page.getByRole('heading',{name:'หน้าทั้งหมด'}).waitFor();
   assert.equal(await ownerBrowser.page.getByText('ยังไม่มีหน้าที่แสดงในรายการ').count(),1);
@@ -465,6 +466,7 @@ try{
   assert.ok(!String(readOnlyUi.data).includes('เปิดตัวแก้ไขฉบับร่าง'));
   await ownerBrowser.page.goto(app+'/admin');
   await ownerBrowser.page.getByRole('link',{name:/ดูรายการหน้าทั้งหมด/}).click();
+  await ownerBrowser.page.waitForURL(/\/admin\/pages$/);
   assert.match(ownerBrowser.page.url(),/\/admin\/pages$/);
   await ownerBrowser.page.getByRole('heading',{name:'หน้าทั้งหมด'}).waitFor();
   assert.equal(await ownerBrowser.page.getByText(slug,{exact:true}).count(),1);
