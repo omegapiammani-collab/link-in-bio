@@ -1,0 +1,310 @@
+-- Run after the 0006 immutable publishing fixture on disposable PostgreSQL.
+\i /work/supabase/migrations/0007_staged_publication.sql
+\i /work/supabase/migrations/0008_secure_release_settings.sql
+\i /work/supabase/migrations/0009_private_privileged_rpc.sql
+\i /work/supabase/migrations/0010_unlisted_published_read.sql
+\i /work/supabase/migrations/0011_public_text_blocks.sql
+
+-- Confirm the private release table is RLS-protected and inaccessible to API roles,
+-- and that the privileged gated RPC continues to see the default OFF switches.
+do $hardening$
+begin
+ if not (select relrowsecurity from pg_class where oid='app_private.release_settings'::regclass) then
+  raise exception 'private release_settings RLS was not enabled';
+ end if;
+ if (select count(*) from pg_policies where schemaname='app_private' and tablename='release_settings') <> 0 then
+  raise exception 'release_settings unexpectedly has an API access policy';
+ end if;
+ if pg_catalog.has_table_privilege('anon','app_private.release_settings','SELECT')
+    or pg_catalog.has_table_privilege('authenticated','app_private.release_settings','UPDATE')
+    then
+  raise exception 'private release settings ACL leak';
+ end if;
+ if not pg_catalog.has_schema_privilege('anon','app_private','USAGE') then
+  raise exception 'private invoker API bridge cannot call reader';
+ end if;
+ if pg_catalog.has_function_privilege('anon','app_private.publish_page_checked(uuid,bigint,boolean)','EXECUTE') then
+  raise exception 'anonymous can execute privileged private publisher';
+ end if;
+ if not pg_catalog.has_function_privilege('anon','app_private.read_published_profile(text)','EXECUTE') then
+  raise exception 'private reader bridge is not executable';
+ end if;
+ if exists(select 1 from pg_proc p join pg_namespace n on n.oid=p.pronamespace
+   where n.nspname='public' and p.proname in ('publish_page_checked','read_published_profile')
+     and p.prosecdef) then
+  raise exception 'public RPC retains privileged SECURITY DEFINER';
+ end if;
+  if (select publish_enabled or public_read_enabled from app_private.release_settings where singleton) then
+  raise exception 'release gates started enabled';
+ end if;
+end;
+$hardening$;
+
+-- Direct calls must deny an anonymous publish and return no page data when
+-- the public reader is OFF. The table must be inaccessible even via a forged
+-- request identity because the schema and table grants are restricted.
+set role anon;
+do $anon$
+declare blocked boolean:=false;
+begin
+ if public.read_published_profile('compat-test') is not null then
+  raise exception 'anonymous reader bypassed OFF gate';
+ end if;
+ begin
+  perform * from public.publish_page_checked(null,1,true);
+ exception when insufficient_privilege then blocked:=true;
+ end;
+ if not blocked then raise exception 'anonymous user can call publish RPC'; end if;
+end;
+$anon$;
+reset role;
+
+
+-- Even an authenticated Owner cannot release anything with just the app
+-- feature flag: the private database release switch defaults OFF.
+set role authenticated;
+select set_config('request.jwt.claim.sub','aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',false);
+do $gate$
+declare blocked boolean:=false;
+begin
+  begin
+    perform * from public.publish_page_checked(
+      (select id from public.pages where slug='compat-test'),3,true);
+  exception when insufficient_privilege then blocked:=true;
+  end;
+  if not blocked then raise exception 'default-off publish interlock bypassed'; end if;
+end;
+$gate$;
+reset role;
+-- CI-only privileged approval: never mutate hosted settings without approval.
+update app_private.release_settings
+set publish_enabled=true, public_read_enabled=true where singleton;
+
+-- A published unlisted page is readable by exact slug, with its visibility
+-- included so the renderer can add a noindex directive.
+set role anon;
+do $check$
+declare payload jsonb;
+begin
+  payload:=public.read_published_profile('compat-test');
+  if payload->>'visibility'<>'unlisted' or payload->>'name'<>'Fresh draft' then
+    raise exception 'unlisted published snapshot was not readable by URL';
+  end if;
+end;
+$check$;
+reset role;
+
+set role authenticated;
+select set_config('request.jwt.claim.sub','bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',false);
+do $check$
+declare blocked boolean:=false;
+begin
+  begin
+    perform * from public.publish_page_checked(
+      (select id from public.pages where slug='compat-test'),3,true);
+  exception when insufficient_privilege then blocked:=true;
+  end;
+  if not blocked then raise exception 'non-Owner was allowed to publish'; end if;
+end;
+$check$;
+reset role;
+
+set role authenticated;
+select set_config('request.jwt.claim.sub','aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',false);
+do $check$
+declare v_page uuid; v_id uuid; v_num integer; v_before integer;
+        blocked boolean:=false;
+begin
+  select id into v_page from public.pages where slug='compat-test';
+  select version_id,version_number into v_id,v_num
+    from public.publish_page_checked(v_page,3,true);
+  if v_id is null or v_num<>3 then raise exception 'audited public release mismatch'; end if;
+  if (select visibility from public.pages where id=v_page)<>'public' then
+    raise exception 'explicit publication did not set public visibility'; end if;
+
+  v_before:=(select count(*) from public.page_versions where page_id=v_page);
+  begin
+    perform * from public.publish_page_checked(v_page,2,false);
+  exception when raise_exception then blocked:=true;
+  end;
+  if not blocked or (select count(*) from public.page_versions where page_id=v_page)<>v_before
+     or (select visibility from public.pages where id=v_page)<>'public' then
+    raise exception 'stale release did not roll back';
+  end if;
+end;
+$check$;
+reset role;
+
+set role anon;
+do $check$
+declare obj jsonb;
+begin
+  obj:=public.read_published_profile('compat-test');
+  if obj->>'name'<>'Fresh draft' or obj->>'slug'<>'compat-test'
+     or obj->>'visibility'<>'public' then
+    raise exception 'public reader did not read immutable version';
+  end if;
+  if (obj ? 'theme' or obj ? 'draftRevision' or obj ? 'audit_events') then
+    raise exception 'public reader leaked private snapshot metadata';
+  end if;
+  if obj->'blocks'<>'[]'::jsonb then
+    raise exception 'empty published snapshot produced blocks';
+  end if;
+  if public.read_published_profile('missing') is not null then
+    raise exception 'unknown slug exposed';
+  end if;
+  -- Base tables must stay inaccessible, even after releasing one page.
+  begin perform 1 from public.page_versions;
+  exception when insufficient_privilege then return;
+  end;
+  raise exception 'anon can read immutable base table';
+end;
+$check$;
+reset role;
+
+-- Editing the next draft never changes the already published public data.
+set role authenticated;
+select set_config('request.jwt.claim.sub','aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',false);
+do $check$
+declare v_page uuid; v_rev bigint;
+begin
+  select id into v_page from public.pages where slug='compat-test';
+  v_rev:=public.save_page_draft_audited(v_page,3,
+    '{"name":"Never public draft","description":"","links":[]}'::jsonb);
+  if v_rev<>4 then raise exception 'draft after public release failed'; end if;
+end;
+$check$;
+reset role;
+set role anon;
+do $check$
+begin
+  if public.read_published_profile('compat-test')->>'name'<>'Fresh draft' then
+    raise exception 'unpublished draft leaked through public reader';
+  end if;
+end;
+$check$;
+reset role;
+set role authenticated;
+select set_config('request.jwt.claim.sub','aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',false);
+do $check$
+declare v_page uuid; v_number int;
+begin
+  select id into v_page from public.pages where slug='compat-test';
+  select version_number into v_number from public.publish_page_checked(v_page,4,false);
+  if v_number<>4 then raise exception 'unlisted republish mismatch'; end if;
+end;
+$check$;
+reset role;
+set role anon;
+do $check$
+declare payload jsonb;
+begin
+  payload:=public.read_published_profile('compat-test');
+  if payload->>'visibility'<>'unlisted' or payload->>'name'<>'Never public draft' then
+    raise exception 'unlisted republish did not expose only the new snapshot';
+  end if;
+end;
+$check$;
+reset role;
+
+-- Inactive links are confidential: the anonymous RPC itself must filter them.
+set role authenticated;
+select set_config('request.jwt.claim.sub','aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',false);
+do $check$
+declare v_page uuid; v_revision bigint; v_version integer;
+begin
+  select id into v_page from public.pages where slug='compat-test';
+  v_revision:=public.save_page_draft_audited(v_page,4,
+    '{"name":"Filtered","description":"","links":[{"id":"4d1c3998-c419-4f4f-8a01-f8c8a8b2bce9","title":"Private inactive","url":"https://private.example.com/secret","active":false},{"id":"6f15d9c5-58f9-43ed-ab50-44eb7c361ae7","title":"Public active","url":"https://example.com/","active":true}]}'::jsonb);
+  if v_revision<>5 then raise exception 'media test draft save failed'; end if;
+  select version_number into v_version from public.publish_page_checked(v_page,5,true);
+  if v_version<>5 then raise exception 'filtered snapshot release failed'; end if;
+end;
+$check$;
+reset role;
+set role anon;
+do $check$
+declare payload jsonb;
+begin
+  payload:=public.read_published_profile('compat-test');
+  if pg_catalog.jsonb_array_length(payload->'links')<>1 or
+     payload #>> '{links,0,title}'<>'Public active' or
+     payload::text like '%Private inactive%' or
+     payload::text like '%private.example.com%' then
+    raise exception 'anonymous RPC disclosed an inactive link';
+  end if;
+end;
+$check$;
+reset role;
+
+-- Published text blocks are projected in order. Hidden, scheduled-out,
+-- malformed and unsupported blocks never leave the anonymous RPC.
+set role authenticated;
+select set_config('request.jwt.claim.sub','aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',false);
+do $blocks$
+declare v_page uuid; v_number integer;
+begin
+  select id into v_page from public.pages where slug='compat-test';
+  insert into public.page_blocks(page_id,type,content_json,sort_order,is_active)
+  values
+    (v_page,'header','{"title":"Public section"}'::jsonb,1,true),
+    (v_page,'divider','{}'::jsonb,2,true),
+    (v_page,'text','{"text":"Hello <script>alert(1)</script>"}'::jsonb,3,true),
+    (v_page,'header','{"title":"Hidden block secret"}'::jsonb,4,false),
+    (v_page,'text','{"text":"Future block secret"}'::jsonb,5,true),
+    (v_page,'text','{"text":"Expired block secret"}'::jsonb,6,true),
+    (v_page,'text','{"text":123}'::jsonb,7,true),
+    (v_page,'image','{"storagePath":"Private image path secret"}'::jsonb,8,true);
+  update public.page_blocks set schedule_start=now()+interval '1 hour'
+    where page_id=v_page and content_json->>'text'='Future block secret';
+  update public.page_blocks set schedule_end=now()-interval '1 hour'
+    where page_id=v_page and content_json->>'text'='Expired block secret';
+  if (public.read_published_profile('compat-test')->'blocks') <> '[]'::jsonb then
+    raise exception 'unpublished blocks became public';
+  end if;
+  select version_number into v_number
+    from public.publish_page_checked(v_page,5,true);
+  if v_number<>6 then raise exception 'block snapshot publish failed'; end if;
+end;
+$blocks$;
+reset role;
+set role anon;
+do $blocks$
+declare payload jsonb; blocks jsonb;
+begin
+  payload:=public.read_published_profile('compat-test');
+  blocks:=payload->'blocks';
+  if pg_catalog.jsonb_array_length(blocks)<>3
+     or blocks #>> '{0,type}'<>'header'
+     or blocks #>> '{0,text}'<>'Public section'
+     or blocks #>> '{1,type}'<>'divider'
+     or blocks #>> '{2,type}'<>'text'
+     or blocks #>> '{2,text}'<>'Hello <script>alert(1)</script>' then
+    raise exception 'visible text block projection or order is wrong';
+  end if;
+  if payload::text like '%Hidden block secret%'
+     or payload::text like '%Future block secret%'
+     or payload::text like '%Expired block secret%'
+     or payload::text like '%Private image path secret%'
+     or payload::text like '%scheduleStart%'
+     or payload::text like '%content_json%' then
+    raise exception 'public RPC leaked hidden or raw block data';
+  end if;
+end;
+$blocks$;
+reset role;
+
+-- Even if an existing page is marked public, an administrator may disable
+-- public data access independently of the frontend feature flag.
+update app_private.release_settings set public_read_enabled=false where singleton;
+set role anon;
+do $check$
+begin
+  if public.read_published_profile('compat-test') is not null then
+    raise exception 'database reader interlock failed';
+  end if;
+end;
+$check$;
+reset role;
+
+select 'PASS: immutable public and unlisted release, Owner authorization, stale rollback, draft isolation' as result;

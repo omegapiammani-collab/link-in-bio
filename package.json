@@ -13,7 +13,8 @@
     "dev:vinext": "vite dev --port 3001",
     "build:vinext": "vite build",
     "start:vinext": "vite preview",
-    "deploy:vinext": "vinext-cloudflare deploy"
+    "deploy:vinext": "vinext-cloudflare deploy",
+    "predeploy:vinext": "node scripts/verify_phase2_staging_env.mjs"
   },
   "dependencies": {
     "@supabase/ssr": "^0.7.0",
@@ -37,6 +38,7 @@
     "cf": "^1.0.0-beta.27",
     "eslint": "^9.0.0",
     "eslint-config-next": "^16.0.0",
+    "playwright": "1.65.0",
     "tailwindcss": "^4.0.0",
     "typescript": "^5.0.0",
     "vite": "^8.3.0"
