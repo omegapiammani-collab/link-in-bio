@@ -9,15 +9,15 @@
 
 | ID | ข้อกำหนดที่ทดสอบได้ | หลักฐานรับงาน |
 | --- | --- | --- |
-| AUTH-01 | Google Sign-in ผูก Owner เพียงหนึ่ง Google `sub` กับ Supabase Auth user ที่อนุญาต | Owner จริงเข้า Admin ได้; Google Non-Owner จริงถูกปฏิเสธหลัง callback |
+| AUTH-01 | Google Sign-in ผูก Owner เพียงหนึ่ง Google `sub` กับ Supabase Auth user ที่อนุญาต; การตรวจ Auth UUID อย่างเดียวใน source ปัจจุบันยังไม่พิสูจน์ข้อนี้ | Owner จริงเข้า Admin ได้; Google Non-Owner จริงถูกปฏิเสธหลัง callback; ตรวจ identity binding |
 | AUTH-02 | ทุก Admin page, API, RPC, Storage operation ตรวจ Owner ฝั่ง server; RLS ปฏิเสธ Non-Owner และ anonymous | HTTP + direct API tests พร้อม JWT จริงใน test environment |
-| AUTH-03 | ไม่มี public signup/Editor account; Owner transfer ต้องเป็นขั้นตอนที่ตรวจสอบและบันทึก audit | ทดสอบการสร้างบัญชีอื่นไม่เพิ่มสิทธิ์; runbook transfer |
-| PAGE-01 | Owner จัดการไม่เกิน 10 หน้าในระยะแรก, slug ไม่ซ้ำ/ไม่ชน reserved route | create/conflict/reserved tests; กำหนด hard limit หรือ soft target ใน SRS สุดท้าย |
+| AUTH-03 | แอปไม่มีการสมัครสมาชิกสาธารณะหรือ Editor account; Google account อื่นที่ Auth รู้จักไม่รับสิทธิ์ Owner; Owner transfer ต้องมีขั้นตอนที่ตรวจสอบและบันทึก audit | บัญชีอื่นเข้า Admin ไม่ได้; runbook transfer |
+| PAGE-01 | ระยะแรกมีหน้าโปรไฟล์ไม่เกิน 10 หน้า, slug ไม่ซ้ำ/ไม่ชน reserved route; โครงสร้างรองรับการขยายในอนาคต | ทดสอบสร้างถึงหน้า 10 และปฏิเสธหน้าที่ 11; slug conflict/reserved tests |
 | PAGE-02 | Draft แยกจาก Published; public อ่านเฉพาะ immutable published snapshot | เปลี่ยน draft ไม่เปลี่ยน public response จน Publish ผ่าน |
-| PAGE-03 | Public เปิดทั่วไป; Unlisted เปิดได้เมื่อรู้ URL แต่ไม่แสดงในรายการสาธารณะและไม่ตั้งใจส่งเข้า index | anonymous HTTP, sitemap/robots/meta tests; cache tests |
-| PAGE-04 | Archive, Trash, Restore ภายใน 30 วัน และลบถาวรหลัง retention | state transition, expiry boundary, audit tests |
+| PAGE-03 | Public เปิดทั่วไป; Unlisted เปิดได้เมื่อรู้ URL แต่ไม่แสดงในรายการสาธารณะและไม่ตั้งใจส่งเข้า index; public reader ปัจจุบันรองรับเฉพาะ Public | anonymous HTTP, sitemap/robots/meta tests; cache tests |
+| PAGE-04 | Archive, Trash และ Restore ได้ภายใน 30 วัน; ต้องตกลงเวลาและวิธีลบถาวรหลังช่วงกู้คืน | state transition, expiry boundary, audit tests |
 | PAGE-05 | เปลี่ยน slug แล้ว URL เก่า redirect ไป canonical URL ที่ถูกต้อง | TH/EN redirect, conflict, loop, archived/trashed tests |
-| BLOCK-01 | รองรับ Link, Header, Divider, Embed, Image, Text โดยประมาณ 20 บล็อกต่อหน้า | renderer และ editor fixture ครบหกชนิด, validation ต่อชนิด |
+| BLOCK-01 | รองรับ Link, Header, Divider, Embed, Image, Text ประมาณ 20 บล็อกต่อหน้า; การมี enum และ snapshot row ใน SQL ยังไม่ใช่ renderer ครบ | renderer และ editor fixture ครบหกชนิด, validation ต่อชนิด |
 | BLOCK-02 | เพิ่ม แก้ ลบ duplicate reorder collapse toggle schedule animation ที่เหมาะสม | browser keyboard/drag tests; snapshot order tests |
 | BLOCK-03 | Embed รับ URL ของหกแพลตฟอร์มตาม allowlist และไม่รับ HTML/JS อิสระ | valid/invalid URL matrix; CSP/XSS tests |
 | TIME-01 | เก็บ schedule เป็น UTC; แก้ไขแสดงเวลา Asia/Bangkok; เวลาเริ่มรวม/เวลาสิ้นสุดไม่รวม | boundary และ timezone tests |
@@ -34,7 +34,7 @@
 | A11Y-01 | Public/Admin ใช้ keyboard, screen reader, focus และ reduced motion ได้ | automated checks กับ manual assistive-tech walkthrough |
 | OPS-01 | ใช้ Free Tier เท่านั้น; ไม่มี SLA 24/7; เลือก Cloudflare หรือ Netlify หลัง spike | limits/compatibility/cost report และ Owner decision |
 
-ข้อกำหนดเพิ่มเติมก่อน implement: นิยาม hard limits ของ 10 หน้า/20 บล็อก, retention เมื่อหน้าอยู่ Trash, ความหมายของ “ลบถาวร” ต่อ versions/audit/backup, เวลา cache สดสูงสุด, วิธี public media ที่ไม่ผูก private signed URL ระยะสั้น, และผู้รับผิดชอบ offsite backup
+ข้อกำหนดเพิ่มเติมก่อน implement: ตกลงว่าจำกัด 10 หน้าจากจำนวน active pages หรือรวม archived/trashed ด้วย และนิยามว่า “ประมาณ 20 บล็อกต่อหน้า” เป็น capacity target หรือ hard limit; retention เมื่อหน้าอยู่ Trash; ความหมายของ “ลบถาวร” ต่อ versions/audit/backup; เวลา cache สดสูงสุด; วิธี public media ที่ไม่ผูก private signed URL ระยะสั้น; ผู้รับผิดชอบ offsite backup
 
 ## Architecture: เส้นทางข้อมูลและขอบเขตสิทธิ์
 
@@ -54,7 +54,7 @@ flowchart LR
   S --> B
 ```
 
-Admin browser ไม่ถือ service-role secret ทุก mutation ผ่าน verified Owner session, same-origin check, validation และ transaction ฝั่ง server ก่อนแตะฐานข้อมูล RLS/ACL เป็นชั้นป้องกันอีกชั้นหนึ่ง Anonymous ไม่ได้รับสิทธิ์ SELECT ตาราง draft, versions, audit หรือ owner config; public RPC คืนเฉพาะข้อมูล published ที่กรองตาม visibility, active state, schedule และ locale แล้ว
+สถาปัตยกรรมเป้าหมายกำหนดให้ Admin browser ไม่ถือ service-role secret ทุก mutation ต้องผ่าน verified Owner session, same-origin check, validation และ transaction ฝั่ง server ก่อนแตะฐานข้อมูล RLS/ACL เป็นชั้นป้องกันอีกชั้นหนึ่ง Anonymous ไม่ได้รับสิทธิ์ SELECT ตาราง draft, versions, audit หรือ owner config เมื่อทำครบตาม Baseline public RPC ต้องคืนเฉพาะ published data โดยกรอง visibility, active state, schedule และ locale ก่อนส่งออก ปัจจุบัน RPC ส่ง profile text และ active links ของหน้า Public เท่านั้น
 
 Publish transaction ตรวจ Owner, expected draft revision, page state และ release switch ในฐานข้อมูล แล้วสร้าง immutable snapshot, version และ audit ก่อนเปลี่ยน pointer แบบ atomic หากขั้นตอนไหนล้มเหลวต้อง rollback ทั้งชุด Rollback ใช้ snapshot เก่าเป็นต้นทางของ version ใหม่ ไม่แก้ version เดิม
 
@@ -79,9 +79,9 @@ Google OAuth, Supabase service, hosted runtime และ offsite backup เป�
 | `backup_manifests` | reference/checksum/verified time | four-copy retention, offsite status, restore proof and bytes manifest |
 | `app_private.release_settings` | private publish/public read switches default OFF | approved rollout state and verifiable switch control |
 
-ทุก JSON contract ต้องมี schema version และ validator ฝั่ง server: `profile`, `theme`, `socials`, `block.content`, `snapshot` ข้อมูลแปลควรเก็บตาม field ไม่ใช่สลับทั้งหน้า เพื่อให้ fallback ภาษาไทยได้เฉพาะช่องที่ขาด
+ข้อเสนอการออกแบบ: ให้ JSON contract มี schema version และ validator ฝั่ง server สำหรับ `profile`, `theme`, `socials`, `block.content` และ `snapshot` เก็บคำแปลแยกตาม field เพื่อให้ fallback ภาษาไทยได้เฉพาะช่องที่ขาด Owner ต้องทบทวนรูปแบบนี้ก่อนออก migration
 
-ข้อมูล Draft และ Published ต้องมี ownership ชัดเจน `page_blocks` ปัจจุบันมี schema แต่ RPC ที่ใช้อยู่รับ `profile_json.links` เป็นหลัก จึงยังพิสูจน์ไม่ได้ว่า block rows ทั้งหกชนิดเข้า immutable snapshot อย่างถูกต้อง ห้ามสร้าง migration เพิ่มโดยอิงเพียงชื่อคอลัมน์ ต้องตกลง contract/transaction และทดสอบบนฐานข้อมูลแยกก่อน
+ข้อมูล Draft และ Published ต้องมี ownership ชัดเจน `page_blocks` ปัจจุบันมี schema และ `0006_immutable_publish_core.sql` ใส่ block rows ลง immutable snapshot แล้ว แต่ Owner API ยังแก้ `profile_json.links` เป็นหลัก และ `0007_staged_publication.sql` public reader คืนเฉพาะ profile text กับ active links จึงยังไม่มี flow จัดการและแสดงผลหกบล็อกครบ ต้องตกลง contract/transaction และทดสอบบนฐานข้อมูลแยกก่อนออก migration เพิ่ม
 
 ## ความสัมพันธ์กับหลักฐานปัจจุบัน
 

@@ -16,13 +16,13 @@ Baseline หัวข้อ 18 ระบุชื่อและผลลัพ�
 
 | Baseline | หลักฐานใน repository | สถานะตาม Baseline |
 | --- | --- | --- |
-| 1 Foundation & Security | `supabase/migrations/0001`–`0009`, `src/lib/auth/owner.ts`, Google callback, CI Auth/RLS/Storage; รายงาน release gate ระบุการทดสอบ Google ของ Preview เดิม | มีฐาน แต่ยังไม่ปิดเกณฑ์ Google/Recovery/hosted parity |
-| 2 Public View & Rendering | `src/app/[slug]/page.tsx` แสดงชื่อ คำอธิบาย และ Link จาก published RPC เมื่อเปิด flag; `src/lib/domain/rules.mjs` มี schedule utility | ยังไม่มี 6 บล็อก, Theme, Embed, Social, Schedule ใน renderer; Public Read ยังปิด |
+| 1 Foundation & Security | `supabase/migrations/0001`–`0009`, `src/lib/auth/owner.ts`, Google callback, CI Auth/RLS/Storage; รายงาน release gate ระบุการทดสอบ Google ของ Preview เดิม | ตรวจ Owner ด้วย Supabase UUID; ยังต้องพิสูจน์การผูก Google `sub`, hosted parity และ recovery |
+| 2 Public View & Rendering | `src/app/[slug]/page.tsx` แสดงชื่อ คำอธิบาย และ Link จาก published RPC เมื่อเปิด flag; SQL snapshot มี blocks/theme/socials แต่ reader ไม่ส่งออก; `src/lib/domain/rules.mjs` มี schedule utility | ยังไม่มี 6 บล็อก, Theme, Embed, Social, Schedule ใน renderer; reader ปัจจุบันปฏิเสธ Unlisted; hosted Public Read ยังไม่ใช่เกณฑ์ผ่าน |
 | 3 Admin Editor & Publishing | `/admin/pages`, `/admin/editor`, draft API, audited SQL, immutable publish core, CI Owner/Non-Owner | มี page list และ Link editor บางส่วน; ยังไม่มี editor 6 บล็อก, appearance, autosave, rollback UI, trash lifecycle |
 | 4 Localization & Enhancements | ภาษาไทยใน UI บางจุด, slug validation ใน schema | ยังไม่มี `/en/[slug]`, per-field fallback, QR, redirect, เกณฑ์ accessibility/performance |
 | 5 Testing, Backup & Deployment | CI unit/integration/browser, backup scripts, `docs/HOSTING_SPIKE.md` | CI แยกชั่วคราวมีหลักฐาน; hosted recovery, monitoring, Cloudflare/Netlify comparison และ release gate ยังไม่ครบ |
 
-สถานะนี้เป็นการประเมิน source ในสาขา Draft ไม่ใช่การรับรอง Production เอกสารก่อนหน้ามีข้อความบางส่วนที่เขียนก่อนการทดสอบและการตั้งค่า test environment ในภายหลัง ให้ตรวจหลักฐานล่าสุดตามวันและ commit ก่อนยกระดับสถานะ
+สถานะนี้เป็นการประเมิน source ในสาขา Draft ไม่ใช่การรับรอง Production เอกสารก่อนหน้ามีข้อความบางส่วนที่เขียนก่อนการทดสอบและการตั้งค่า test environment ในภายหลัง ให้ตรวจหลักฐานล่าสุดตามวันและ commit ก่อนยกระดับสถานะ สถานะ hosted switch ในตารางอ้างอิง release gate เดิม ไม่ใช่ผลตรวจสดของ hosted environment
 
 ## Phase 0: เอกสารออกแบบที่ต้องตกลงก่อน implementation
 
@@ -38,7 +38,7 @@ Baseline หัวข้อ 18 ระบุชื่อและผลลัพ�
 
 **ลำดับงาน**
 
-1. ตรวจ Google OAuth callback และการผูก Owner กับ Google `sub`/Supabase Auth ID สำหรับบัญชีเดียว กำหนดวิธีเปลี่ยน Owner ที่มีการตรวจสอบ
+1. ตรวจ Google OAuth callback และการผูก Owner กับ Google `sub`/Supabase Auth ID สำหรับบัญชีเดียว ปัจจุบัน server ตรวจ `OWNER_AUTH_USER_ID` กับ Auth UUID เท่านั้น จึงต้องกำหนดและพิสูจน์การตรวจ Google identity ตาม Baseline รวมวิธีเปลี่ยน Owner ที่มีการตรวจสอบ
 2. ทบทวน RLS และ privilege ของตาราง, RPC และ Storage ด้วย Owner, Non-Owner, anonymous และ token ผิดรูปแบบ รวมการปฏิเสธเมื่อ flag ปิด
 3. ตรวจ schema จริงกับ SRS: หน้าหลายหน้า, slug สงวน, draft/version, blocks, media, audit, backup; ออก migration เพิ่มเฉพาะ gap ที่ผ่านการทบทวน
 4. ทบทวน URL/XSS/embed/file checks, request limits, secret handling และ rate limit ตาม boundary ของแต่ละ API
@@ -59,19 +59,19 @@ Baseline หัวข้อ 18 ระบุชื่อและผลลัพ�
 3. แปลง URL ของ YouTube, Spotify, TikTok, Vimeo, SoundCloud, Apple Music เป็น embed ที่อนุญาตแบบ allowlist ไม่รับ HTML/JavaScript อิสระ
 4. เพิ่ม preset และ config ของ Theme, avatar/background, fonts, social icons, reduced motion และ mobile layout; ใช้ media ที่ปลอดภัยสำหรับ public snapshot ไม่ใช้ private signed URL เป็น URL ถาวร
 5. ทดสอบ schedule ด้วย UTC storage, Asia/Bangkok input/output, boundary times, tab ที่เปิดค้าง, clock ไม่เชื่อถือได้ และ cache fallback แบบซ่อน scheduled block เมื่อไม่อาจพิสูจน์เวลา
-6. พิสูจน์ Public/Unlisted semantics, การไม่จัดทำดัชนี Unlisted และข้อจำกัด cache ด้วย isolated tests ก่อนเปิด public flag ใด ๆ
+6. แก้ public reader contract ที่ปัจจุบันกรอง `p.visibility='public'` ให้รองรับ Unlisted ตาม URL โดยไม่ทำให้หน้าอยู่ในรายการสาธารณะหรือ sitemap พิสูจน์ semantics และข้อจำกัด cache ด้วย isolated tests ก่อนเปิด public flag ใด ๆ
 
 **พึ่งพา:** Phase 1 ผ่านข้อกำหนดข้อมูลและ security; snapshot/schema ใน Phase 0 อนุมัติ
 
 **เกณฑ์รับงาน:** ตัวอย่างครบ 6 บล็อกและ 4 ธีมแสดงถูกต้องบนมือถือ/desktop; embed URL อันตรายถูกปฏิเสธ; scheduled block ไม่รั่วผ่าน HTTP/HTML/API/cache; anonymous เห็นเฉพาะ published Public snapshot, Unlisted ตาม URL ที่ทราบและนโยบายที่กำหนด; draft ไม่รั่ว; มี integration และ browser tests ที่ใช้ API จริงใน CI แยก
 
-**สถานะ:** renderer ปัจจุบันแสดงเพียง profile text และ Links ภายใต้ `PHASE2_PUBLIC_RENDER_ENABLED`; ยังไม่ผ่านเกณฑ์ Phase 2 นี้
+**สถานะ:** renderer ปัจจุบันแสดงเพียง profile text และ Links ภายใต้ `PHASE2_PUBLIC_RENDER_ENABLED`; SQL snapshot มี blocks/theme/socials แต่ public reader ไม่ส่งเนื้อหาเหล่านั้น และ Unlisted ยังไม่เปิดตาม URL; ยังไม่ผ่านเกณฑ์ Phase 2 นี้
 
 ## Phase 3: Admin Editor & Publishing
 
 **ลำดับงาน**
 
-1. จัดการ page lifecycle: create/edit, slug conflict, visibility, archive, trash, restore ภายใน 30 วัน และการลบหลังหมดอายุโดยมี audit
+1. จัดการ page lifecycle: create/edit, slug conflict, visibility, archive, trash และ restore ภายใน 30 วัน กำหนดนโยบายลบถาวรหลังหมดช่วงกู้คืนแยกต่างหาก พร้อม audit
 2. ทำ editor ของ 6 บล็อก: เพิ่ม/แก้/duplicate/ลบ, reorder ด้วย keyboard และ drag/drop, collapse/expand, toggle, schedules, animation, Thai/English fields
 3. ทำ Appearance editor และ live preview ที่ใช้ renderer contract เดียวกับ published view; desktop สองฝั่ง, mobile สลับแท็บ, draft/published switch
 4. เพิ่ม autosave ที่มี revision/CAS, debounce, dirty/saving/saved/conflict/error states และ reload/retry ที่ไม่ทับงานเก่า
@@ -114,7 +114,7 @@ Baseline หัวข้อ 18 ระบุชื่อและผลลัพ�
 ## งานถัดไปที่ทำได้ภายใต้ข้อห้ามปัจจุบัน
 
 1. ให้ Owner ตรวจ Baseline v1.1 และแผนนี้ แล้วระบุว่ารับรองขอบเขตใด
-2. จัดทำ SRS, Architecture และ Schema แบบร่างจาก Baseline พร้อม requirement IDs และ mapping ไป source ปัจจุบัน
+2. ทบทวนร่าง SRS, Architecture และ Schema ใน `docs/SRS_ARCHITECTURE_SCHEMA_V1_1_DRAFT.md` พร้อม requirement IDs และ mapping ไป source ปัจจุบัน
 3. ทบทวน test gaps และทำ CI แยกเฉพาะ read-only/ความปลอดภัยที่ไม่เปิด hosted flags หลังได้รับสิทธิ์เริ่ม implementation ตามหัวข้อ 19
 4. คง Draft PR และ feature branch, ไม่ประกาศว่าทั้ง 5 เฟสเสร็จเพียงเพราะ CI เดิมผ่าน
 
