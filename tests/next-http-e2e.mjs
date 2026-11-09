@@ -299,8 +299,8 @@ try{
   assert.equal(verified.status,200);
   assert.equal(verified.data.revision,2);
 
-  // Only explicit Owner publication can make a private snapshot public.
-  // A published-but-unlisted snapshot must stay inaccessible anonymously.
+  // Only explicit Owner publication can make a snapshot readable. A published
+  // unlisted page is accessible by URL but must tell crawlers not to index it.
   const slug='next-http-owner';
   const hiddenBefore=await call('/'+slug);
   assert.equal(hiddenBefore.status,404,'draft profile became public before release');
@@ -326,7 +326,13 @@ try{
   assert.equal(unlisted.status,200,JSON.stringify(unlisted.data));
   assert.equal(unlisted.data.visibility,'unlisted');
   assert.equal(unlisted.data.versionNumber,1);
-  assert.equal((await call('/'+slug)).status,404,'unlisted snapshot leaked');
+  const unlistedPage=await call('/'+slug);
+  assert.equal(unlistedPage.status,200,'published unlisted URL was not readable');
+  assert.ok(String(unlistedPage.data).includes('Updated Next HTTP'));
+  const visitorPage=await browser.newPage();
+  await visitorPage.goto(app+'/'+slug);
+  assert.match(await visitorPage.locator('meta[name="robots"]').getAttribute('content'),
+    /noindex/,'unlisted page did not ask crawlers to skip indexing');
 
   const publicRelease=await call('/api/admin/publish/'+pageId,{
     cookie:owner.cookie,method:'POST',
@@ -338,6 +344,10 @@ try{
   assert.equal(publicPage.status,200,JSON.stringify(publicPage.data).slice(0,350));
   assert.ok(String(publicPage.data).includes('Updated Next HTTP'),
     'public route did not display the immutable published profile');
+  await visitorPage.reload();
+  const robotsTag=visitorPage.locator('meta[name="robots"]');
+  const publicRobots=await robotsTag.count()?await robotsTag.getAttribute('content')??'':'';
+  assert.ok(!publicRobots.includes('noindex'),'public page retained unlisted noindex');
 
   const staleRelease=await call('/api/admin/publish/'+pageId,{
     cookie:owner.cookie,method:'POST',
@@ -363,8 +373,15 @@ try{
     body:{expectedRevision:3,makePublic:false}
   });
   assert.equal(removePublic.status,200,JSON.stringify(removePublic.data));
-  assert.equal((await call('/'+slug)).status,404,
-    'unlisted republish did not revoke public route access');
+  const returnedUnlisted=await call('/'+slug);
+  assert.equal(returnedUnlisted.status,200,
+    'unlisted republish did not retain URL access');
+  assert.ok(String(returnedUnlisted.data).includes('Not yet released'),
+    'unlisted republish did not serve the new immutable snapshot');
+  await visitorPage.reload();
+  assert.match(await visitorPage.locator('meta[name="robots"]').getAttribute('content'),
+    /noindex/,'unlisted republish lost noindex');
+  await visitorPage.close();
 
   // Real Next.js media API must validate file magic, size, Owner and CSRF
   // before invoking the actual private Storage HTTP service with the Owner JWT.
@@ -563,7 +580,7 @@ try{
     'signed-out browser still reached admin');
   assert.match(afterLogout.headers.get('location')??'',/\/login/);
 
-  console.log('PASS: Chromium empty/populated Owner Page List, 50-row boundary, soft-delete and default-off denial, real GoTrue SSR cookies, PostgREST RLS, CSRF, CAS and explicit immutable publish privacy');
+  console.log('PASS: Chromium Owner Page List, default-off denial, real GoTrue SSR cookies, PostgREST RLS, CSRF, CAS and published Unlisted noindex');
 } finally {
   if(browser)await browser.close();
   await stopServer();

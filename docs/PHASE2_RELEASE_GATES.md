@@ -22,7 +22,9 @@ apply hosted migrations, use a paid tier, or merge into `main`.
 - [x] Staged Next.js public route `/[slug]` reads immutable published profile
   content only when `PHASE2_PUBLIC_RENDER_ENABLED=true`. Explicit Owner
   publish API/UI requires `PHASE2_PUBLISH_ENABLED=true`, same-origin, exact
-  revision, verified Owner and confirmation. Unlisted remains private.
+  revision, verified Owner and confirmation. The Baseline v1.1 follow-up
+  adds exact-URL anonymous reading for published Unlisted pages and a noindex
+  directive in the renderer. Draft and archived pages remain inaccessible.
 - [x] Owner-only image upload API enforces max 5 MiB, allowed MIME,
   PNG/JPEG/WebP/GIF header signature and origin validation before Storage upload.
   Owner-only media signed-URL API permits server-generated per-user paths

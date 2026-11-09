@@ -2,6 +2,7 @@
 \i /work/supabase/migrations/0007_staged_publication.sql
 \i /work/supabase/migrations/0008_secure_release_settings.sql
 \i /work/supabase/migrations/0009_private_privileged_rpc.sql
+\i /work/supabase/migrations/0010_unlisted_published_read.sql
 
 -- Confirm the private release table is RLS-protected and inaccessible to API roles,
 -- and that the privileged gated RPC continues to see the default OFF switches.
@@ -78,12 +79,15 @@ reset role;
 update app_private.release_settings
 set publish_enabled=true, public_read_enabled=true where singleton;
 
--- Published but unlisted snapshots MUST NOT leak even via the public RPC.
+-- A published unlisted page is readable by exact slug, with its visibility
+-- included so the renderer can add a noindex directive.
 set role anon;
 do $check$
+declare payload jsonb;
 begin
-  if public.read_published_profile('compat-test') is not null then
-    raise exception 'unlisted snapshot leaked to anon';
+  payload:=public.read_published_profile('compat-test');
+  if payload->>'visibility'<>'unlisted' or payload->>'name'<>'Fresh draft' then
+    raise exception 'unlisted published snapshot was not readable by URL';
   end if;
 end;
 $check$;
@@ -135,7 +139,8 @@ do $check$
 declare obj jsonb;
 begin
   obj:=public.read_published_profile('compat-test');
-  if obj->>'name'<>'Fresh draft' or obj->>'slug'<>'compat-test' then
+  if obj->>'name'<>'Fresh draft' or obj->>'slug'<>'compat-test'
+     or obj->>'visibility'<>'public' then
     raise exception 'public reader did not read immutable version';
   end if;
   if (obj ? 'theme' or obj ? 'draftRevision' or obj ? 'audit_events'
@@ -189,9 +194,11 @@ $check$;
 reset role;
 set role anon;
 do $check$
+declare payload jsonb;
 begin
-  if public.read_published_profile('compat-test') is not null then
-    raise exception 'unlisted republish did not remove public access';
+  payload:=public.read_published_profile('compat-test');
+  if payload->>'visibility'<>'unlisted' or payload->>'name'<>'Never public draft' then
+    raise exception 'unlisted republish did not expose only the new snapshot';
   end if;
 end;
 $check$;
@@ -240,4 +247,4 @@ end;
 $check$;
 reset role;
 
-select 'PASS: immutable public release, unlisted privacy, Owner authorization, stale rollback, draft isolation' as result;
+select 'PASS: immutable public and unlisted release, Owner authorization, stale rollback, draft isolation' as result;

@@ -33,6 +33,9 @@ CREATE FUNCTION public.rls_auto_enable() RETURNS event_trigger
 \i /work/supabase/migrations/0005_audited_draft_transactions.sql
 \i /work/supabase/migrations/0006_immutable_publish_core.sql
 \i /work/supabase/migrations/0007_staged_publication.sql
+\i /work/supabase/migrations/0008_secure_release_settings.sql
+\i /work/supabase/migrations/0009_private_privileged_rpc.sql
+\i /work/supabase/migrations/0010_unlisted_published_read.sql
 -- Approve release switches in this throwaway CI database only.
 update app_private.release_settings set publish_enabled=true,public_read_enabled=true where singleton;
 
