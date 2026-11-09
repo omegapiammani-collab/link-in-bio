@@ -423,6 +423,8 @@ jobs:
         with:
           node-version: '22'
       - run: npm ci --no-audit --no-fund
+      - name: Install Chromium for isolated Owner Page List browser checks
+        run: npx playwright install --with-deps chromium
       - name: Build isolated Next.js HTTP server against localhost-only Supabase gateway
         run: npm run build
         env:

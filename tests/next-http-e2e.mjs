@@ -7,6 +7,7 @@ import assert from 'node:assert/strict';
 import http from 'node:http';
 import { spawn } from 'node:child_process';
 import { createServerClient } from '@supabase/ssr';
+import { chromium } from 'playwright';
 
 const gatewayPort=54321, appPort=3100;
 const base='http://127.0.0.1:'+gatewayPort;
@@ -102,7 +103,8 @@ execFileSync('docker',[
   'run','--rm','--network','host','-e','PGPASSWORD=ci-only-local-password',
   'postgres:17','psql','-h','127.0.0.1','-U','postgres','-d','storage_http_ci',
   '-v','ON_ERROR_STOP=1','-c',
-  "UPDATE public.owner_config SET auth_user_id='"+ownerId+"'::uuid WHERE singleton"
+  "UPDATE public.owner_config SET auth_user_id='"+ownerId+"'::uuid WHERE singleton;"+
+  "UPDATE public.pages SET deleted_at=now() WHERE deleted_at IS NULL"
 ],{stdio:'pipe'});
 
 const env={
@@ -121,17 +123,24 @@ const env={
   PHASE2_MEDIA_UPLOAD_ENABLED:'true',
   PHASE2_MEDIA_SIGN_ENABLED:'true'
 };
-let server=spawn(process.execPath,['node_modules/next/dist/bin/next','start','-p',String(appPort),'-H','localhost'],{
-  env,stdio:['ignore','pipe','pipe']
-});
-let serverOutput='';
-for(const stream of [server.stdout,server.stderr]){
-  stream.on('data',data=>{
-    serverOutput+=data.toString();
-    if(serverOutput.length>8000)serverOutput=serverOutput.slice(-8000);
-  });
-}
-try{
+const readOnlyEnv={
+  ...env,
+  PHASE2_PAGE_CREATE_ENABLED:'false',
+  PHASE2_DRAFT_WRITE_ENABLED:'false',
+  PHASE2_PUBLISH_ENABLED:'false',
+  PHASE2_PUBLIC_RENDER_ENABLED:'false',
+  PHASE2_MEDIA_UPLOAD_ENABLED:'false',
+  PHASE2_MEDIA_SIGN_ENABLED:'false'
+};
+let server;
+let browser;
+async function startServer(config){
+  server=spawn(process.execPath,
+    ['node_modules/next/dist/bin/next','start','-p',String(appPort),'-H','localhost'],
+    {env:config,stdio:['ignore','pipe','pipe']});
+  let output='';
+  for(const stream of [server.stdout,server.stderr])
+    stream.on('data',data=>{output=(output+data.toString()).slice(-8000);});
   let ready=false;
   for(let i=0;i<80;i++){
     if(server.exitCode!==null)break;
@@ -141,7 +150,18 @@ try{
     }catch{}
     await new Promise(resolve=>setTimeout(resolve,500));
   }
-  assert.ok(ready,'Next server never became ready: '+serverOutput);
+  assert.ok(ready,'Next server never became ready: '+output);
+}
+async function stopServer(){
+  if(!server||server.exitCode!==null)return;
+  server.kill('SIGTERM');
+  await new Promise(resolve=>{
+    server.once('exit',resolve);
+    setTimeout(resolve,1500).unref();
+  });
+}
+try{
+  await startServer(readOnlyEnv);
 
   const owner=await signIn(ownerEmail);
   const other=await signIn(foreignEmail);
@@ -162,6 +182,43 @@ try{
     try{data=JSON.parse(raw);}catch{data=raw;}
     return {status:response.status,data,headers:response.headers};
   }
+
+  browser=await chromium.launch({headless:true});
+  async function browserSession(cookie){
+    const context=await browser.newContext();
+    if(cookie)await context.addCookies(cookie.split('; ').map(piece=>{
+      const index=piece.indexOf('=');
+      return {
+        name:decodeURIComponent(piece.slice(0,index)),
+        value:decodeURIComponent(piece.slice(index+1)),url:app
+      };
+    }));
+    const page=await context.newPage();
+    const errors=[];
+    page.on('pageerror',error=>errors.push(String(error)));
+    return {context,page,errors};
+  }
+  const ownerBrowser=await browserSession(owner.cookie);
+  const emptyList=await call('/api/admin/pages',{cookie:owner.cookie});
+  assert.equal(emptyList.status,200,JSON.stringify(emptyList.data));
+  assert.deepEqual(emptyList.data.pages,[],
+    'read-only list should be empty before the Next HTTP fixture creates a page');
+  await ownerBrowser.page.goto(app+'/admin');
+  await ownerBrowser.page.getByRole('link',{name:/ดูรายการหน้าทั้งหมด/}).click();
+  assert.match(ownerBrowser.page.url(),/\/admin\/pages$/);
+  await ownerBrowser.page.getByRole('heading',{name:'หน้าทั้งหมด'}).waitFor();
+  assert.equal(await ownerBrowser.page.getByText('ยังไม่มีหน้าที่แสดงในรายการ').count(),1);
+  assert.equal(await ownerBrowser.page.getByRole('link',{name:/สร้างหน้าฉบับร่างใหม่/}).count(),0);
+  for(const cookie of [undefined,other.cookie]){
+    const visitor=await browserSession(cookie);
+    await visitor.page.goto(app+'/admin/pages');
+    await visitor.page.waitForURL(/\/login/);
+    assert.deepEqual(visitor.errors,[]);
+    await visitor.context.close();
+  }
+  assert.deepEqual(ownerBrowser.errors,[],'empty-state browser page errors');
+  await stopServer();
+  await startServer(env);
 
   const noCode=await call('/auth/callback');
   assert.ok([302,303,307,308].includes(noCode.status));
@@ -352,6 +409,14 @@ try{
   assert.deepEqual(Buffer.from(await signedImage.arrayBuffer()),png,
     'signed media URL content differs from uploaded bytes');
 
+  // Seed one private draft before switching the application back to
+  // read-only mode; browser checks below never create or edit a page.
+  const browserDraft=await call('/api/admin/pages',{
+    cookie:owner.cookie,method:'POST',
+    body:{slug:'browser-readonly-draft',document}
+  });
+  assert.equal(browserDraft.status,201,JSON.stringify(browserDraft.data));
+
   // Run the actual Owner list against disposable GoTrue and PostgREST with
   // every write and public-release switch off. Reads must leave DB rows intact.
   async function databaseSnapshot(){
@@ -373,33 +438,8 @@ try{
   }
   assert.ok(owner.token,'Owner must have a real GoTrue JWT');
   const beforeRead=await databaseSnapshot();
-  server.kill('SIGTERM');
-  await new Promise(resolve=>server.once('exit',resolve));
-  const readOnlyEnv={
-    ...env,
-    PHASE2_PAGE_CREATE_ENABLED:'false',
-    PHASE2_DRAFT_WRITE_ENABLED:'false',
-    PHASE2_PUBLISH_ENABLED:'false',
-    PHASE2_PUBLIC_RENDER_ENABLED:'false',
-    PHASE2_MEDIA_UPLOAD_ENABLED:'false',
-    PHASE2_MEDIA_SIGN_ENABLED:'false'
-  };
-  server=spawn(process.execPath,
-    ['node_modules/next/dist/bin/next','start','-p',String(appPort),'-H','localhost'],
-    {env:readOnlyEnv,stdio:['ignore','pipe','pipe']});
-  let readOnlyOutput='';
-  for(const stream of [server.stdout,server.stderr])
-    stream.on('data',data=>{readOnlyOutput+=data.toString();});
-  let readOnlyReady=false;
-  for(let i=0;i<80;i++){
-    if(server.exitCode!==null)break;
-    try{
-      const response=await fetch(app+'/login',{redirect:'manual'});
-      if(response.status===200){readOnlyReady=true;break;}
-    }catch{}
-    await new Promise(resolve=>setTimeout(resolve,500));
-  }
-  assert.ok(readOnlyReady,'Read-only Next server never became ready: '+readOnlyOutput);
+  await stopServer();
+  await startServer(readOnlyEnv);
 
   for(const cookie of [undefined,other.cookie]){
     const denied=await call('/api/admin/pages',{cookie});
@@ -423,6 +463,16 @@ try{
   assert.equal(readOnlyUi.status,200);
   assert.ok(String(readOnlyUi.data).includes(slug));
   assert.ok(!String(readOnlyUi.data).includes('เปิดตัวแก้ไขฉบับร่าง'));
+  await ownerBrowser.page.goto(app+'/admin');
+  await ownerBrowser.page.getByRole('link',{name:/ดูรายการหน้าทั้งหมด/}).click();
+  assert.match(ownerBrowser.page.url(),/\/admin\/pages$/);
+  await ownerBrowser.page.getByRole('heading',{name:'หน้าทั้งหมด'}).waitFor();
+  assert.equal(await ownerBrowser.page.getByText(slug,{exact:true}).count(),1);
+  assert.equal(await ownerBrowser.page.getByText('browser-readonly-draft',{exact:true}).count(),1);
+  assert.equal(await ownerBrowser.page.getByText('ยังไม่มีหน้าที่แสดงในรายการ').count(),0);
+  assert.equal(await ownerBrowser.page.getByRole('link',{name:/เปิดตัวแก้ไขฉบับร่าง/}).count(),0);
+  assert.equal(await ownerBrowser.page.getByRole('link',{name:/สร้างหน้าฉบับร่างใหม่/}).count(),0);
+  assert.deepEqual(ownerBrowser.errors,[],'populated-state browser page errors');
   const foreignRows=await fetch(base+'/rest/v1/pages?select=id,slug',{
     headers:{authorization:'Bearer '+other.token}
   });
@@ -467,13 +517,9 @@ try{
     'signed-out browser still reached admin');
   assert.match(afterLogout.headers.get('location')??'',/\/login/);
 
-  console.log('PASS: actual Next HTTP /admin and guarded APIs, Owner/Non-Owner read-only page list, real GoTrue SSR cookies, PostgREST RLS, CSRF, CAS and explicit immutable publish privacy');
+  console.log('PASS: Chromium empty/populated Owner Page List navigation and Non-Owner denial, read-only Next HTTP, real GoTrue SSR cookies, PostgREST RLS, CSRF, CAS and explicit immutable publish privacy');
 } finally {
-  server.kill('SIGTERM');
-  await new Promise(resolve=>{
-    if(server.exitCode!==null)return resolve();
-    server.once('exit',resolve);
-    setTimeout(resolve,1500).unref();
-  });
+  if(browser)await browser.close();
+  await stopServer();
   gateway.close();
 }
