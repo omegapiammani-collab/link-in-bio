@@ -3,6 +3,7 @@
 \i /work/supabase/migrations/0008_secure_release_settings.sql
 \i /work/supabase/migrations/0009_private_privileged_rpc.sql
 \i /work/supabase/migrations/0010_unlisted_published_read.sql
+\i /work/supabase/migrations/0011_public_text_blocks.sql
 
 -- Confirm the private release table is RLS-protected and inaccessible to API roles,
 -- and that the privileged gated RPC continues to see the default OFF switches.
@@ -143,9 +144,11 @@ begin
      or obj->>'visibility'<>'public' then
     raise exception 'public reader did not read immutable version';
   end if;
-  if (obj ? 'theme' or obj ? 'draftRevision' or obj ? 'audit_events'
-      or obj ? 'blocks') then
+  if (obj ? 'theme' or obj ? 'draftRevision' or obj ? 'audit_events') then
     raise exception 'public reader leaked private snapshot metadata';
+  end if;
+  if obj->'blocks'<>'[]'::jsonb then
+    raise exception 'empty published snapshot produced blocks';
   end if;
   if public.read_published_profile('missing') is not null then
     raise exception 'unknown slug exposed';
@@ -232,6 +235,63 @@ begin
   end if;
 end;
 $check$;
+reset role;
+
+-- Published text blocks are projected in order. Hidden, scheduled-out,
+-- malformed and unsupported blocks never leave the anonymous RPC.
+set role authenticated;
+select set_config('request.jwt.claim.sub','aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',false);
+do $blocks$
+declare v_page uuid; v_number integer;
+begin
+  select id into v_page from public.pages where slug='compat-test';
+  insert into public.page_blocks(page_id,type,content_json,sort_order,is_active)
+  values
+    (v_page,'header','{"title":"Public section"}'::jsonb,1,true),
+    (v_page,'divider','{}'::jsonb,2,true),
+    (v_page,'text','{"text":"Hello <script>alert(1)</script>"}'::jsonb,3,true),
+    (v_page,'header','{"title":"Hidden block secret"}'::jsonb,4,false),
+    (v_page,'text','{"text":"Future block secret"}'::jsonb,5,true),
+    (v_page,'text','{"text":"Expired block secret"}'::jsonb,6,true),
+    (v_page,'text','{"text":123}'::jsonb,7,true),
+    (v_page,'image','{"storagePath":"Private image path secret"}'::jsonb,8,true);
+  update public.page_blocks set schedule_start=now()+interval '1 hour'
+    where page_id=v_page and content_json->>'text'='Future block secret';
+  update public.page_blocks set schedule_end=now()-interval '1 hour'
+    where page_id=v_page and content_json->>'text'='Expired block secret';
+  if (public.read_published_profile('compat-test')->'blocks') <> '[]'::jsonb then
+    raise exception 'unpublished blocks became public';
+  end if;
+  select version_number into v_number
+    from public.publish_page_checked(v_page,5,true);
+  if v_number<>6 then raise exception 'block snapshot publish failed'; end if;
+end;
+$blocks$;
+reset role;
+set role anon;
+do $blocks$
+declare payload jsonb; blocks jsonb;
+begin
+  payload:=public.read_published_profile('compat-test');
+  blocks:=payload->'blocks';
+  if pg_catalog.jsonb_array_length(blocks)<>3
+     or blocks #>> '{0,type}'<>'header'
+     or blocks #>> '{0,text}'<>'Public section'
+     or blocks #>> '{1,type}'<>'divider'
+     or blocks #>> '{2,type}'<>'text'
+     or blocks #>> '{2,text}'<>'Hello <script>alert(1)</script>' then
+    raise exception 'visible text block projection or order is wrong';
+  end if;
+  if payload::text like '%Hidden block secret%'
+     or payload::text like '%Future block secret%'
+     or payload::text like '%Expired block secret%'
+     or payload::text like '%Private image path secret%'
+     or payload::text like '%scheduleStart%'
+     or payload::text like '%content_json%' then
+    raise exception 'public RPC leaked hidden or raw block data';
+  end if;
+end;
+$blocks$;
 reset role;
 
 -- Even if an existing page is marked public, an administrator may disable

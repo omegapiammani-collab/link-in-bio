@@ -8,13 +8,24 @@ import { validExternalUrl } from '@/lib/domain/draft-contract.mjs';
 export const dynamic='force-dynamic';
 type Props={params:Promise<{slug:string}>};
 type LinkEntry={id:string;title:string;url:string;active:boolean};
-type Snapshot={slug:string;visibility:'public'|'unlisted';name:string;description:string;links:LinkEntry[]};
+type PublicBlock=
+  | {id:string;type:'header'|'text';text:string}
+  | {id:string;type:'divider'};
+type Snapshot={slug:string;visibility:'public'|'unlisted';name:string;description:string;links:LinkEntry[];blocks:PublicBlock[]};
+function validBlock(value:unknown):value is PublicBlock{
+  if(!value||typeof value!=='object'||Array.isArray(value))return false;
+  const block=value as Record<string,unknown>;
+  if(typeof block.id!=='string')return false;
+  if(block.type==='divider')return true;
+  return (block.type==='header'||block.type==='text')&&typeof block.text==='string';
+}
 function validSnapshot(value:unknown):value is Snapshot{
   if(!value||typeof value!=='object'||Array.isArray(value))return false;
   const p=value as Record<string,unknown>;
   return typeof p.slug==='string'&&
     (p.visibility==='public'||p.visibility==='unlisted')&&typeof p.name==='string'&&
-    typeof p.description==='string'&&Array.isArray(p.links);
+    typeof p.description==='string'&&Array.isArray(p.links)&&
+    Array.isArray(p.blocks)&&p.blocks.every(validBlock);
 }
 const readPublishedProfile=cache(async(slug:string):Promise<Snapshot|null>=>{
   if(process.env.PHASE2_PUBLIC_RENDER_ENABLED!=='true'||
@@ -51,6 +62,22 @@ export default async function PublicProfile({params}:Props){
         </a>
       </li>)}
     </ul>
+    {data.blocks.length>0&&<section aria-label="เนื้อหา" className="space-y-4 text-left">
+      {data.blocks.map(block=>{
+        switch(block.type){
+          case 'header':
+            return <h2 key={block.id} className="text-xl font-semibold break-words">{block.text}</h2>;
+          case 'divider':
+            return <hr key={block.id} className="border-slate-300" />;
+          case 'text':
+            return <p key={block.id} className="whitespace-pre-wrap break-words">{block.text}</p>;
+          default:{
+            const exhaustive:never=block;
+            return exhaustive;
+          }
+        }
+      })}
+    </section>}
     <footer className="pt-8 text-sm text-slate-500"><Link href="/">Link-in-Bio</Link></footer>
   </main>;
 }

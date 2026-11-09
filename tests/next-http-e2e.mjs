@@ -299,6 +299,20 @@ try{
   assert.equal(verified.status,200);
   assert.equal(verified.data.revision,2);
 
+  // Seed published text blocks in the disposable database. The Owner block
+  // editor does not exist yet, so this fixture bypasses only that UI.
+  execFileSync('docker',[
+    'run','--rm','--network','host','-e','PGPASSWORD=ci-only-local-password',
+    'postgres:17','psql','-h','127.0.0.1','-U','postgres','-d','storage_http_ci',
+    '-v','ON_ERROR_STOP=1','-c',
+    "INSERT INTO public.page_blocks(page_id,type,content_json,sort_order,is_active,schedule_start) VALUES "+
+    "('"+pageId+"','header','{\"title\":\"Browser section\"}',1,true,null),"+
+    "('"+pageId+"','divider','{}',2,true,null),"+
+    "('"+pageId+"','text','{\"text\":\"Safe <script>alert(1)</script>\"}',3,true,null),"+
+    "('"+pageId+"','header','{\"title\":\"Hidden browser secret\"}',4,false,null),"+
+    "('"+pageId+"','text','{\"text\":\"Future browser secret\"}',5,true,now()+interval '1 hour')"
+  ],{stdio:'pipe'});
+
   // Only explicit Owner publication can make a snapshot readable. A published
   // unlisted page is accessible by URL but must tell crawlers not to index it.
   const slug='next-http-owner';
@@ -329,8 +343,17 @@ try{
   const unlistedPage=await call('/'+slug);
   assert.equal(unlistedPage.status,200,'published unlisted URL was not readable');
   assert.ok(String(unlistedPage.data).includes('Updated Next HTTP'));
+  assert.ok(!String(unlistedPage.data).includes('Hidden browser secret'));
+  assert.ok(!String(unlistedPage.data).includes('Future browser secret'));
+  assert.ok(!String(unlistedPage.data).includes('<script>alert(1)</script>'),
+    'text block was inserted as executable HTML');
   const visitorPage=await browser.newPage();
   await visitorPage.goto(app+'/'+slug);
+  assert.equal(await visitorPage.getByRole('heading',{name:'Browser section'}).count(),1);
+  assert.equal(await visitorPage.locator('section[aria-label="เนื้อหา"] hr').count(),1);
+  assert.equal(await visitorPage.getByText('Safe <script>alert(1)</script>').count(),1);
+  assert.equal(await visitorPage.getByText('Hidden browser secret').count(),0);
+  assert.equal(await visitorPage.getByText('Future browser secret').count(),0);
   assert.match(await visitorPage.locator('meta[name="robots"]').getAttribute('content'),
     /noindex/,'unlisted page did not ask crawlers to skip indexing');
 
